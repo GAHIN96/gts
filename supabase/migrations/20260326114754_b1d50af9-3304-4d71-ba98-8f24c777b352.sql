@@ -1,0 +1,1 @@
+ALTER TABLE public.hotel_available_dates ADD COLUMN available_rooms integer NOT NULL DEFAULT 0;

@@ -1,0 +1,16 @@
+project_id = "wumholworulutftwkqjw"
+
+[functions.travel-assistant]
+verify_jwt = false
+
+[functions.booking-status-notification]
+verify_jwt = false
+
+[functions.payment-notification]
+verify_jwt = false
+
+[functions.admin-create-agency]
+verify_jwt = false
+
+[functions.admin-reset-password]
+verify_jwt = false

@@ -1,0 +1,1 @@
+ALTER TABLE public.group_packages ADD COLUMN departure_city_id uuid REFERENCES public.cities(id);

@@ -1,0 +1,1 @@
+ALTER TABLE public.flights ADD COLUMN multi_city_group_id UUID DEFAULT NULL;
