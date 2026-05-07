@@ -166,7 +166,7 @@ function ExpandedHotelView({
         {lowestPrice > 0 && (
           <div className="absolute bottom-4 right-4 bg-card/95 backdrop-blur-md rounded-xl px-4 py-2.5 shadow-xl border border-border/30">
             <span className="text-xs text-muted-foreground font-medium">from </span>
-            <span className="text-2xl font-black text-primary">${lowestPrice}</span>
+            <span className="text-2xl font-bold text-primary">${lowestPrice}</span>
           </div>
         )}
 
@@ -205,7 +205,7 @@ function ExpandedHotelView({
       {/* Hotel details */}
       <div className="p-6 space-y-5">
         <div>
-          <h3 className="text-2xl font-black text-foreground tracking-tight">{hotel.name}</h3>
+          <h3 className="text-2xl font-bold text-foreground tracking-tight">{hotel.name}</h3>
           {hotel.address && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1.5">
               <MapPin className="h-4 w-4 text-primary/60" />

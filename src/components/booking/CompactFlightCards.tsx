@@ -129,7 +129,7 @@ export function CompactFlightCards({
         {/* Times */}
         <div className="flex items-end justify-between gap-2 pt-1">
           <div className="space-y-0.5">
-            <p className="text-2xl font-black text-foreground tabular-nums leading-none">
+            <p className="text-2xl font-bold text-foreground tabular-nums leading-none">
               {formatTime(departureTime)}
             </p>
             <p className="text-xs text-muted-foreground font-medium">{departureCode}</p>
@@ -148,7 +148,7 @@ export function CompactFlightCards({
 
           <div className="space-y-0.5 text-right">
             <div className="flex items-baseline gap-0.5 justify-end">
-              <p className="text-2xl font-black text-foreground tabular-nums leading-none">
+              <p className="text-2xl font-bold text-foreground tabular-nums leading-none">
                 {formatTime(arrivalTime)}
               </p>
               {nextDay && (

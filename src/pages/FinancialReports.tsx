@@ -399,7 +399,7 @@ const FinancialReports = () => {
                 <TableBody>
                   {filteredBookings.map((booking) => (
                     <TableRow key={booking.id} className="hover:bg-muted/50">
-                      <TableCell className="font-mono text-sm font-medium">
+                      <TableCell className="font-sans font-medium text-sm font-medium">
                         {booking.booking_number}
                       </TableCell>
                       <TableCell className="capitalize">

@@ -26,6 +26,20 @@ export interface RoomLike {
   room_to?: number | null;         // min in band
   available_rooms?: number | null; // current remaining inventory for this row
   total_rooms?: number | null;     // total inventory for this row
+  price_child?: number | null;
+  price_child_6?: number | null;
+  price_infant?: number | null;
+}
+
+export interface SpecialPriceLike {
+  room_id?: string | null;
+  from_date?: string;
+  to_date?: string;
+  room_rate?: number | null;
+  price_adult?: number | null;
+  price_child_6_12?: number | null;
+  price_child_2_6?: number | null;
+  price_infant?: number | null;
 }
 
 const norm = (s: string | null | undefined) => (s || "").trim().toLowerCase();
@@ -42,7 +56,6 @@ const rowPrice = (r: RoomLike) =>
 /**
  * Pick the best hotel_rooms row for a requested room type, based purely on
  * the REQUESTED ROOM COUNT (request-driven, like group package rates).
- * Inventory (`available_rooms` / `total_rooms`) is intentionally ignored.
  *
  * @param rooms      All hotel_rooms rows for the hotel
  * @param roomType   Requested room type label (e.g. "Double")
@@ -52,14 +65,6 @@ export function pickRoomBand<T extends RoomLike>(
   rooms: T[] | undefined | null,
   roomType: string | null | undefined,
   requested: number = 1,
-  /**
-   * Currently available rooms for the searched dates (from
-   * hotel_available_dates minus overlapping bookings). When provided, the band
-   * is selected by AVAILABILITY rather than by the user's requested count —
-   * this matches the admin "default rates" model where the price tier is keyed
-   * to how many rooms remain in the inventory window.
-   */
-  available?: number | null,
 ): T | null {
   const active = (rooms || []).filter((r) => r.is_active !== false);
   if (active.length === 0) return null;
@@ -71,59 +76,21 @@ export function pickRoomBand<T extends RoomLike>(
 
   const candidates = sameType.length > 0 ? sameType : active;
 
-  // Prefer availability-driven selection when caller supplies it; otherwise
-  // fall back to the requested room count (group-package style).
-  const availNum =
-    available === null || available === undefined ? null : Number(available);
-  const useAvail = availNum !== null && Number.isFinite(availNum) && availNum > 0;
-  const req = useAvail
-    ? Math.max(1, Math.floor(availNum as number))
-    : Math.max(1, Math.floor(Number(requested) || 1));
+  // DEBUG LOG
+  console.log(`[pickRoomBand] type=${roomType} req=${requested}`);
 
-  // Escalating-tier rule (matches admin "Default Prices" intent):
-  //   Each band [room_to..room_from] applies while remaining inventory is
-  //   STRICTLY GREATER than its lower bound (`room_to`). The moment remaining
-  //   touches `room_to`, pricing escalates to the next (lower-inventory,
-  //   higher-price) band.
-  //
-  //   Example: bands "10→6" ($60) and "5→1" ($100), capacity 10:
-  //     remaining 10..7 → band "10→6" ($60)
-  //     remaining 6..1  → band "5→1"  ($100)   ← boundary flips at 6
-  //
-  // When `available` is not supplied we fall back to inclusive matching on the
-  // requested room count (legacy group-package behaviour).
-  const inBand = (r: RoomLike, n: number, lowerExclusive: boolean) => {
+  const req = Math.max(1, Math.floor(Number(requested) || 1));
+
+  // The inBand check is inclusive on both ends [lo..hi].
+  const inBand = (r: RoomLike, n: number) => {
     const a = Number(r.room_to ?? 1);
     const b = Number(r.room_from ?? Number.MAX_SAFE_INTEGER);
     const lo = Math.min(a, b);
     const hi = Math.max(a, b);
-    return lowerExclusive ? n > lo && n <= hi : n >= lo && n <= hi;
+    return n >= lo && n <= hi;
   };
 
-  let matches = candidates.filter((r) => inBand(r, req, useAvail));
-
-  // Availability path: if remaining sits exactly on a band's lower bound,
-  // escalate DOWN to the next-smaller band (last-rooms pricing). E.g. with
-  // bands 10→6 and 5→1, remaining=6 should land on the 5→1 band, not 10→6.
-  if (matches.length === 0 && useAvail) {
-    // Pick the band whose upper bound is the LARGEST value still < req.
-    // That's the "next tier down" in inventory.
-    const below = candidates
-      .map((r) => ({
-        r,
-        hi: Math.max(Number(r.room_to ?? 1), Number(r.room_from ?? 0)),
-      }))
-      .filter((x) => x.hi < req)
-      .sort((a, b) => b.hi - a.hi);
-    if (below.length > 0) return below[0].r;
-    // Nothing below — fall back to the smallest band overall.
-    const smallest = [...candidates].sort((a, b) => {
-      const aHi = Math.max(Number(a.room_to ?? 1), Number(a.room_from ?? 0));
-      const bHi = Math.max(Number(b.room_to ?? 1), Number(b.room_from ?? 0));
-      return aHi - bHi;
-    });
-    if (smallest.length > 0) return smallest[0];
-  }
+  let matches = candidates.filter((r) => inBand(r, req));
 
   if (matches.length > 0) {
     // Multiple bands matched — prefer the lower-inventory / higher-price tier
@@ -150,9 +117,58 @@ export function pickRoomPrice(
   roomType: string | null | undefined,
   requested: number = 1,
   fallback: number = 0,
-  available?: number | null,
 ): number {
-  const picked = pickRoomBand(rooms, roomType, requested, available);
+  const picked = pickRoomBand(rooms, roomType, requested);
   if (!picked) return fallback;
   return rowPrice(picked) || fallback;
 }
+
+/**
+ * PHASE 2 & 3: Resolve dynamic price based on remaining inventory.
+ * Following the "Manual Dynamic Pricing" system logic:
+ * 1. Find the tier where current inventory fits.
+ * 2. Check for special prices first (Special Prices priority).
+ * 3. Fall back to default tier price.
+ */
+export function resolveRoomPrice(
+  rooms: RoomLike[] | undefined | null,
+  roomType: string | null | undefined,
+  inventoryRemaining: number,
+  specials: SpecialPriceLike[] | undefined | null,
+  night: Date,
+): { adult: number; child6: number; child2: number; infant: number } | null {
+  // Step 5 & 6: Filter by Room Type and match Inventory Remaining to From/To band
+  const picked = pickRoomBand(rooms, roomType, inventoryRemaining);
+  if (!picked) return null;
+
+  const y = night.getFullYear();
+  const m = String(night.getMonth() + 1).padStart(2, '0');
+  const d = String(night.getDate()).padStart(2, '0');
+  const nightStr = `${y}-${m}-${d}`;
+
+  // Step 4: Special Prices Priority
+  const special = (specials || []).find((s) => {
+    if (s.room_id && picked.id && s.room_id !== picked.id) return false;
+    const from = (s.from_date || "0000-00-00").split('T')[0];
+    const to = (s.to_date || "9999-99-99").split('T')[0];
+    return nightStr >= from && nightStr <= to;
+  });
+
+  if (special) {
+    return {
+      adult: Number(special.room_rate || special.price_adult || picked.price_adult || picked.price_per_night || 0),
+      child6: Number(special.price_child_6_12 || picked.price_child_6 || 0),
+      child2: Number(special.price_child_2_6 || picked.price_child || 0),
+      infant: Number(special.price_infant || picked.price_infant || 0),
+    };
+  }
+
+  // Phase 3: Final Output (Default Prices)
+  return {
+    adult: Number(picked.price_adult || picked.price_per_night || 0),
+    child6: Number(picked.price_child_6 || 0),
+    child2: Number(picked.price_child || 0),
+    infant: Number(picked.price_infant || 0),
+  };
+}
+

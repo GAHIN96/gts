@@ -148,11 +148,18 @@ export function useRecentBookings(limit: number = 5) {
       // Fetch agency names for each booking
       const bookingsWithAgency = await Promise.all(
         (data || []).map(async (booking) => {
-          const { data: agency } = await supabase
-            .from("agencies")
-            .select("agency_name")
-            .eq("user_id", booking.user_id)
-            .single();
+          let agencyName = "N/A";
+          try {
+            const { data: agency } = await supabase
+              .from("agencies")
+              .select("agency_name")
+              .eq("user_id", booking.user_id)
+              .maybeSingle();
+            
+            if (agency) agencyName = agency.agency_name;
+          } catch (err) {
+            console.warn(`Could not fetch agency for user ${booking.user_id}:`, err);
+          }
 
           return {
             id: booking.id,
@@ -163,7 +170,7 @@ export function useRecentBookings(limit: number = 5) {
             status: booking.status || "draft",
             created_at: booking.created_at || "",
             package_name: (booking.package_departures as any)?.group_packages?.name,
-            agency_name: agency?.agency_name,
+            agency_name: agencyName,
           };
         })
       );

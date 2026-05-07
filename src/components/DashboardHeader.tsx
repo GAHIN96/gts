@@ -106,7 +106,6 @@ const DashboardHeader = () => {
       <div className="flex items-center justify-between h-14 px-4 md:px-6">
         {/* Left side */}
         <div className="flex items-center gap-3">
-          <SidebarTrigger className="h-9 w-9 hover:bg-muted rounded-lg transition-colors" />
 
           {/* Greeting + Breadcrumbs */}
           <div className="hidden sm:flex items-center gap-3">

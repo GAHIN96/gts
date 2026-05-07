@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateBooking } from "@/hooks/useBookings";
@@ -439,7 +439,7 @@ export function TransferBookingModal({ open, onOpenChange, transfer }: TransferB
                                         mode="single"
                                         selected={field.value}
                                         onSelect={field.onChange}
-                                        disabled={(date) => date < new Date()}
+                                        disabled={(date) => startOfDay(date) < startOfDay(new Date())}
                                         initialFocus
                                         className={cn("p-3 pointer-events-auto")}
                                       />
@@ -581,7 +581,12 @@ export function TransferBookingModal({ open, onOpenChange, transfer }: TransferB
                                           mode="single"
                                           selected={field.value}
                                           onSelect={field.onChange}
-                                          disabled={(date) => date < new Date()}
+                                          disabled={(date) => {
+                                            const transferDate = form.getValues("transfer_date");
+                                            return transferDate 
+                                              ? startOfDay(date) < startOfDay(transferDate) 
+                                              : startOfDay(date) < startOfDay(new Date());
+                                          }}
                                           initialFocus
                                           className={cn("p-3 pointer-events-auto")}
                                         />

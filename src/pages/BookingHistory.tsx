@@ -362,7 +362,7 @@ const BookingHistory = () => {
                               <TypeIcon className={cn("h-4.5 w-4.5", typeConf.color)} />
                             </div>
                             <div>
-                              <p className="font-mono text-[11px] text-muted-foreground/70 leading-none">{booking.booking_number}</p>
+                              <p className="font-sans font-medium text-[11px] text-muted-foreground/70 leading-none">{booking.booking_number}</p>
                               <p className="text-sm font-semibold capitalize mt-1">{booking.booking_type}</p>
                             </div>
                           </div>

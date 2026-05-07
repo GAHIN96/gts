@@ -240,7 +240,7 @@ const PnrReports = () => {
                   ) : (
                     filtered.map((b) => (
                       <TableRow key={b.id}>
-                        <TableCell className="font-mono font-bold">{b.pnr}</TableCell>
+                        <TableCell className="font-sans font-medium font-bold">{b.pnr}</TableCell>
                         <TableCell><Badge variant="outline">{b.pnr_passengers?.length || 0}</Badge></TableCell>
                         <TableCell>{b.airline}</TableCell>
                         <TableCell>{b.route}</TableCell>
@@ -282,7 +282,7 @@ const PnrReports = () => {
                     filtered.flatMap((b) =>
                       (b.pnr_passengers || []).map((p) => (
                         <TableRow key={p.id}>
-                          <TableCell className="font-mono font-bold">{b.pnr}</TableCell>
+                          <TableCell className="font-sans font-medium font-bold">{b.pnr}</TableCell>
                           <TableCell>{p.title}</TableCell>
                           <TableCell>{p.first_name}</TableCell>
                           <TableCell>{p.last_name}</TableCell>

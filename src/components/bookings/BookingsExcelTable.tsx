@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronUp, X, Eye, Filter as FilterIcon, Inbox, Rows3, Rows2 } from "lucide-react";
+import { ChevronDown, ChevronUp, X, Eye, Filter as FilterIcon, Inbox, Rows3, Rows2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Booking } from "@/hooks/useBookings";
 import { Input } from "@/components/ui/input";
@@ -49,22 +49,22 @@ const EMPTY_FILTERS: Filters = {
 };
 
 // Status accent colors (left border + pill)
-const STATUS_ACCENT: Record<string, { stripe: string; pill: string; dot: string }> = {
-  pending_payment: { stripe: "before:bg-rose-500",   pill: "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300",   dot: "bg-rose-500" },
-  payment_under_review: { stripe: "before:bg-amber-500", pill: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300", dot: "bg-amber-500" },
-  confirmed: { stripe: "before:bg-emerald-500", pill: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300", dot: "bg-emerald-500" },
-  canceled: { stripe: "before:bg-rose-700", pill: "bg-rose-200 text-rose-800 dark:bg-rose-700/30 dark:text-rose-200", dot: "bg-rose-700" },
-  refunded: { stripe: "before:bg-slate-400", pill: "bg-slate-200 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300", dot: "bg-slate-400" },
-  draft: { stripe: "before:bg-muted-foreground/40", pill: "bg-muted text-muted-foreground", dot: "bg-muted-foreground/50" },
+const STATUS_ACCENT: Record<string, { stripe: string; pill: string; dot: string; glow: string }> = {
+  pending_payment: { stripe: "bg-amber-500", pill: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-500", glow: "" },
+  payment_under_review: { stripe: "bg-blue-500", pill: "bg-blue-50 text-blue-700 border-blue-200", dot: "bg-blue-500", glow: "" },
+  confirmed: { stripe: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500", glow: "" },
+  canceled: { stripe: "bg-rose-500", pill: "bg-rose-50 text-rose-700 border-rose-200", dot: "bg-rose-500", glow: "" },
+  refunded: { stripe: "bg-slate-300", pill: "bg-slate-50 text-slate-700 border-slate-200", dot: "bg-slate-400", glow: "" },
+  draft: { stripe: "bg-slate-200", pill: "bg-slate-50 text-slate-500 border-slate-100", dot: "bg-slate-300", glow: "" },
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  pending_payment: "PENDING",
-  payment_under_review: "IN PROCESS",
-  confirmed: "CONFIRMED",
-  canceled: "CANCELED",
-  refunded: "REFUNDED",
-  draft: "DRAFT",
+  pending_payment: "Pending Payment",
+  payment_under_review: "Under Review",
+  confirmed: "Confirmed",
+  canceled: "Canceled",
+  refunded: "Refunded",
+  draft: "Draft",
 };
 
 const STATUS_OPTIONS = [
@@ -155,6 +155,8 @@ interface Props {
   onPageSizeChange: (s: number) => void;
   isLoading?: boolean;
   visibleColumns?: Set<string>;
+  isAdmin?: boolean;
+  onDelete?: (id: string) => void;
 }
 
 const COLUMN_DEFS: Array<{
@@ -166,8 +168,8 @@ const COLUMN_DEFS: Array<{
   { key: "booking_date", label: "Booking Date", width: "130px" },
   { key: "pnr", label: "PNR", width: "100px" },
   { key: "departure", label: "Departure", width: "130px" },
-  { key: "status", label: "Status", width: "140px" },
-  { key: "agent", label: "Agents", width: "170px" },
+  { key: "status", label: "Status", width: "160px" },
+  { key: "agent", label: "Agents", width: "180px" },
   { key: "group", label: "Group" },
   { key: "hotel", label: "Hotel", width: "180px" },
   { key: "room_type", label: "Room Type", width: "110px" },
@@ -186,54 +188,53 @@ interface InlineFilterProps {
   value: string;
   onChange: (v: string) => void;
 }
-function InlineFilter({ active, label, options, value, onChange }: InlineFilterProps) {
+
+const InlineFilter = ({ active, label, options, value, onChange }: InlineFilterProps) => {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const filtered = useMemo(
-    () => options.filter(o => o.label.toLowerCase().includes(q.toLowerCase())),
-    [options, q]
-  );
+  const filtered = options.filter(o => o.label.toLowerCase().includes(q.toLowerCase()));
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[11px] font-semibold transition-colors w-full justify-between",
-            "border border-transparent hover:border-border hover:bg-background",
+            "inline-flex items-center gap-1.5 h-7 px-2 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all w-full justify-between",
+            "border border-border/40 bg-slate-50 hover:border-primary/40 hover:bg-slate-100 text-slate-500 hover:text-primary",
             active && "border-primary/50 bg-primary/10 text-primary"
           )}
         >
-          <span className="truncate">{value === "all" ? "All" : (options.find(o => o.value === value)?.label || "All")}</span>
-          <FilterIcon className={cn("h-3 w-3 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
+          <span className="truncate">{value === "all" ? `All ${label}` : (options.find(o => o.value === value)?.label || "All")}</span>
+          <FilterIcon className={cn("h-3 w-3 shrink-0", active ? "text-primary" : "text-slate-300")} />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-0" align="start">
-        <div className="p-2 border-b">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">{label}</div>
+      <PopoverContent className="w-64 p-0 bg-white border-border shadow-2xl overflow-hidden" align="start">
+        <div className="p-3 border-b border-border bg-slate-50">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-2">{label} Filter</div>
           <Input
             value={q}
             onChange={e => setQ(e.target.value)}
-            placeholder="Search…"
-            className="h-7 text-xs"
+            placeholder="Search criteria..."
+            className="h-8 text-xs bg-white border-border rounded-xl focus-visible:ring-primary/20"
           />
         </div>
         <div className="max-h-64 overflow-y-auto py-1">
           <button
             onClick={() => { onChange("all"); setOpen(false); setQ(""); }}
             className={cn(
-              "w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors",
-              value === "all" && "bg-primary/10 text-primary font-semibold"
+              "w-full text-left px-4 py-2 text-[11px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-colors",
+              value === "all" ? "text-primary bg-primary/5" : "text-slate-600"
             )}
           >
-            All
+            All Records
           </button>
           {filtered.map(o => (
             <button
               key={o.value}
               onClick={() => { onChange(o.value); setOpen(false); setQ(""); }}
               className={cn(
-                "w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors truncate",
-                value === o.value && "bg-primary/10 text-primary font-semibold"
+                "w-full text-left px-4 py-2 text-[11px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-colors truncate",
+                value === o.value ? "text-primary bg-primary/5" : "text-slate-500"
               )}
               title={o.label}
             >
@@ -241,7 +242,7 @@ function InlineFilter({ active, label, options, value, onChange }: InlineFilterP
             </button>
           ))}
           {filtered.length === 0 && (
-            <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>
+            <div className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-300">No matching records</div>
           )}
         </div>
       </PopoverContent>
@@ -250,7 +251,7 @@ function InlineFilter({ active, label, options, value, onChange }: InlineFilterP
 }
 
 
-export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onPageSizeChange, isLoading, visibleColumns }: Props) {
+export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onPageSizeChange, isLoading, visibleColumns, isAdmin, onDelete }: Props) {
   const isVisible = (key: ColKey) => !visibleColumns || visibleColumns.has(key);
   const navigate = useNavigate();
 
@@ -394,17 +395,18 @@ export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onP
       <th
         onClick={() => toggleSort(colKey)}
         className={cn(
-          "px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-foreground/70 cursor-pointer select-none whitespace-nowrap",
-          "border-r border-border/30 last:border-r-0 hover:text-primary transition-colors",
-          active && "text-primary",
+          "px-3 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 cursor-pointer select-none whitespace-nowrap",
+          "border-r border-border/40 last:border-r-0 hover:text-primary transition-all group/hcell",
+          active && "text-primary bg-primary/5",
           className
         )}
       >
-        <div className="inline-flex items-center gap-1.5">
+        <div className="inline-flex items-center gap-2">
           {label}
-          {active === "asc" ? <ChevronUp className="h-3 w-3" /> :
-           active === "desc" ? <ChevronDown className="h-3 w-3" /> :
-           <ChevronDown className="h-3 w-3 opacity-20" />}
+          <div className="flex flex-col gap-0.5">
+            <ChevronUp className={cn("h-2.5 w-2.5 transition-all", active === "asc" ? "text-primary" : "text-slate-300 group-hover/hcell:text-slate-500")} />
+            <ChevronDown className={cn("h-2.5 w-2.5 transition-all", active === "desc" ? "text-primary" : "text-slate-300 group-hover/hcell:text-slate-500")} />
+          </div>
         </div>
       </th>
     );
@@ -417,15 +419,19 @@ export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onP
     switch (key) {
       case "pnr":
         return (
-          <th className="px-2 py-1.5 border-r border-border/30">
+          <th className="px-2 py-2 border-r border-border/40">
             <Input
               value={filters.pnr}
               onChange={e => setFilters(f => ({ ...f, pnr: e.target.value }))}
-              placeholder="PNR…"
-              className={cn("h-7 text-[11px] rounded-md font-mono", filters.pnr && "border-primary/50 bg-primary/5")}
+              placeholder="Search..."
+              className={cn("h-7 text-[10px] rounded-lg font-bold uppercase tracking-widest bg-slate-50 border-border focus-visible:ring-primary/20", filters.pnr && "border-primary/50 bg-primary/10 text-primary")}
             />
           </th>
         );
+      case "departure":
+        return <th className="px-2 py-1.5 border-r border-border/30" />;
+      case "booking_date":
+        return <th className="px-2 py-1.5 border-r border-border/30" />;
       case "status":
         return (
           <th className="px-2 py-1.5 border-r border-border/30">
@@ -487,50 +493,51 @@ export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onP
     switch (key) {
       case "booking_date":
         return (
-          <td className={cn(cellPad, "text-foreground border-r border-border/30 whitespace-nowrap tabular-nums")}>
-            {b.created_at ? format(new Date(b.created_at), "dd/MM/yyyy") : "—"}
+          <td className={cn(cellPad, "text-slate-500 border-r border-border/40 whitespace-nowrap text-[11px] font-medium tabular-nums relative")}>
+            <div className={cn("absolute left-0 top-0 bottom-0 w-0.5", accent.stripe)} />
+            {b.created_at ? format(new Date(b.created_at), "dd/MM/yyyy") : "---"}
           </td>
         );
       case "pnr":
         return (
-          <td className={cn(cellPad, "border-r border-border/30")}>
-            <span className="inline-flex items-center justify-center min-w-[56px] px-2 py-0.5 rounded-md bg-orange-500 text-white font-mono font-bold text-[11px] tracking-wider shadow-sm shadow-orange-500/30">
+          <td className={cn(cellPad, "border-r border-border/40")}>
+            <span className="inline-flex items-center justify-center min-w-[56px] px-2 py-0.5 rounded-lg bg-primary/5 border border-primary/20 text-primary font-semibold text-[10px] tracking-wide shadow-sm">
               {getPnr(b)}
             </span>
           </td>
         );
       case "departure":
         return (
-          <td className={cn(cellPad, "text-foreground border-r border-border/30 whitespace-nowrap tabular-nums")}>
-            {dep ? format(dep, "dd/MM/yyyy") : "—"}
+          <td className={cn(cellPad, "text-slate-500 border-r border-border/40 whitespace-nowrap text-[11px] font-medium tabular-nums")}>
+            {dep ? format(dep, "dd/MM/yyyy") : "---"}
           </td>
         );
       case "status":
         return (
-          <td className={cn(cellPad, "border-r border-border/30 whitespace-nowrap")}>
+          <td className={cn(cellPad, "border-r border-border/40 whitespace-nowrap")}>
             <span className={cn(
-              "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide",
+              "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[9px] font-semibold uppercase tracking-wider border",
               accent.pill
             )}>
-              <span className={cn("h-1.5 w-1.5 rounded-full", accent.dot)} />
+              <span className={cn("h-1 w-1 rounded-full", accent.dot)} />
               {STATUS_LABEL[status]}
             </span>
           </td>
         );
       case "agent":
-        return <td className={cn(cellPad, "font-semibold text-foreground border-r border-border/30 whitespace-nowrap truncate max-w-[200px]")}>{getAgentLabel(b)}</td>;
+        return <td className={cn(cellPad, "font-semibold text-slate-800 border-r border-border/40 whitespace-nowrap truncate max-w-[200px]")}>{getAgentLabel(b)}</td>;
       case "group":
-        return <td className={cn(cellPad, "text-foreground border-r border-border/30 truncate max-w-[420px]")}>{getGroupLabel(b)}</td>;
+        return <td className={cn(cellPad, "text-slate-500 font-medium border-r border-border/40 truncate max-w-[420px]")}>{getGroupLabel(b)}</td>;
       case "hotel":
-        return <td className={cn(cellPad, "text-foreground border-r border-border/30 truncate max-w-[200px]")}>{(b.hotels?.name || "—").toUpperCase()}</td>;
+        return <td className={cn(cellPad, "text-slate-600 font-medium border-r border-border/40 truncate max-w-[200px]")}>{b.hotels?.name || "---"}</td>;
       case "room_type": {
         const rt = getRoomType(b);
         return (
-          <td className={cn(cellPad, "border-r border-border/30 whitespace-nowrap")}>
+          <td className={cn(cellPad, "border-r border-border/40 whitespace-nowrap")}>
             {rt === "—" ? (
-              <span className="text-muted-foreground">—</span>
+              <span className="text-slate-300 font-bold">---</span>
             ) : (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-primary/10 text-primary font-bold text-[10px] tracking-wider">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-50 border border-border text-slate-600 font-medium text-[9px] tracking-wide">
                 {rt}
               </span>
             )}
@@ -538,44 +545,44 @@ export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onP
         );
       }
       case "room_qty":
-        return <td className={cn(cellPad, "text-right font-semibold text-foreground border-r border-border/30 tabular-nums")}>{getRoomQty(b)}</td>;
+        return <td className={cn(cellPad, "text-right font-bold text-slate-400 border-r border-border/40 tabular-nums")}>{getRoomQty(b)}</td>;
       case "amount":
         return (
-          <td className={cn(cellPad, "text-right font-bold text-foreground border-r border-border/30 tabular-nums whitespace-nowrap")}>
-            <span className="text-muted-foreground font-normal mr-0.5">$</span>
+          <td className={cn(cellPad, "text-right font-bold text-slate-800 border-r border-border/40 tabular-nums whitespace-nowrap")}>
+            <span className="text-slate-300 font-normal mr-0.5">$</span>
             {Number(b.total_amount || 0).toLocaleString()}
           </td>
         );
       case "commission": {
         const c = getCommissionAmount(b);
         return (
-          <td className={cn(cellPad, "text-right font-semibold border-r border-border/30 tabular-nums whitespace-nowrap")}>
+          <td className={cn(cellPad, "text-right font-bold border-r border-border/40 tabular-nums whitespace-nowrap")}>
             {c > 0 ? (
-              <span className="text-emerald-600 dark:text-emerald-400">
-                <span className="opacity-60 font-normal mr-0.5">$</span>
-                {c.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              <span className="text-emerald-600">
+                <span className="opacity-40 font-normal mr-0.5">$</span>
+                {c.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </span>
-            ) : <span className="text-muted-foreground">—</span>}
+            ) : <span className="text-slate-200 font-bold">---</span>}
           </td>
         );
       }
       case "net_amount":
         return (
-          <td className={cn(cellPad, "text-right font-bold border-r border-border/30 tabular-nums whitespace-nowrap text-foreground")}>
-            <span className="text-muted-foreground font-normal mr-0.5">$</span>
-            {getNetAmount(b).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          <td className={cn(cellPad, "text-right font-bold border-r border-border/40 tabular-nums whitespace-nowrap text-slate-700")}>
+            <span className="text-slate-300 font-normal mr-0.5">$</span>
+            {getNetAmount(b).toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </td>
         );
       case "penalty": {
         const p = getPenalty(b);
         return (
-          <td className={cn(cellPad, "text-right font-semibold border-r border-border/30 tabular-nums whitespace-nowrap")}>
+          <td className={cn(cellPad, "text-right font-bold border-r border-border/40 tabular-nums whitespace-nowrap")}>
             {p > 0 ? (
-              <span className="text-rose-600 dark:text-rose-400">
-                <span className="opacity-60 font-normal mr-0.5">$</span>
-                {p.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              <span className="text-rose-600">
+                <span className="opacity-40 font-normal mr-0.5">$</span>
+                {p.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </span>
-            ) : <span className="text-muted-foreground">—</span>}
+            ) : <span className="text-slate-200 font-bold">---</span>}
           </td>
         );
       }
@@ -585,153 +592,140 @@ export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onP
   return (
     <div className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden">
       {/* Top bar: row count + grid filters + density */}
-      <div className="flex items-center justify-between gap-3 px-3 py-2 bg-gradient-to-r from-muted/40 to-muted/10 border-b border-border/50">
-        <div className="flex items-center gap-2 min-h-[24px]">
+      <div className="flex items-center justify-between gap-4 px-4 py-2.5 bg-slate-50 border-b border-border/40 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent pointer-events-none" />
+        <div className="flex items-center gap-3 min-h-[24px] relative z-10">
           {hasActiveFilters ? (
-            <>
-              <span className="text-[11px] font-semibold text-primary">
-                Filters active — {sorted.length} of {bookings.length} rows
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-primary uppercase tracking-[0.1em]">
+                ACTIVE_FILTERS: {sorted.length}/{bookings.length} Bookings
               </span>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-[11px] text-primary hover:text-primary"
+                className="h-6 px-2 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-white hover:bg-primary/20 rounded-md"
                 onClick={() => setFilters(EMPTY_FILTERS)}
               >
-                <X className="h-3 w-3 mr-1" /> Clear filters
+                <X className="h-3 w-3 mr-1" /> Reset Grid
               </Button>
-            </>
+            </div>
           ) : (
-            <span className="text-[11px] font-medium text-muted-foreground">
-              {bookings.length} {bookings.length === 1 ? "booking" : "bookings"}
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+              {bookings.length} Registered Bookings
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {/* Grid Filters popover — styled like Date Range */}
+        <div className="flex items-center gap-2 relative z-10">
+          {/* Grid Filters popover */}
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
                 className={cn(
-                  "h-7 gap-1.5 text-[11px] font-semibold rounded-md",
-                  hasActiveFilters && "border-primary/60 bg-primary/10 text-primary hover:bg-primary/15"
+                  "h-8 gap-2 text-[10px] font-bold uppercase tracking-widest rounded-xl border-border bg-white hover:bg-slate-50 text-slate-600 transition-all",
+                  hasActiveFilters && "border-primary/40 bg-primary/10 text-primary"
                 )}
               >
                 <FilterIcon className="h-3.5 w-3.5" />
-                Grid Filters
+                Filter Records
                 {hasActiveFilters && (
-                  <span className="ml-0.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
-                    {[
-                      filters.pnr ? 1 : 0,
-                      filters.status !== "all" ? 1 : 0,
-                      filters.agent !== "all" ? 1 : 0,
-                      filters.group !== "all" ? 1 : 0,
-                      filters.hotel !== "all" ? 1 : 0,
-                    ].reduce((a, b) => a + b, 0)}
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-4.5 px-1 rounded-md bg-primary text-white text-[9px] font-bold">
+                    {activeFilterCount}
                   </span>
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-3" align="end">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Grid Filters</div>
+            <PopoverContent className="w-80 p-0 bg-white border-border rounded-2xl shadow-2xl overflow-hidden" align="end">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-slate-50">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Grid Configuration</div>
                 {hasActiveFilters && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-[11px]"
+                    className="h-6 px-2 text-[10px] font-bold uppercase tracking-widest text-primary hover:text-white"
                     onClick={() => setFilters(EMPTY_FILTERS)}
                   >
-                    <X className="h-3 w-3 mr-1" /> Reset
+                    <X className="h-3 w-3 mr-1" /> RESET
                   </Button>
                 )}
               </div>
-              <div className="space-y-2.5">
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">PNR</label>
+              <div className="p-4 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Booking PNR</label>
                   <Input
                     value={filters.pnr}
                     onChange={e => setFilters(f => ({ ...f, pnr: e.target.value }))}
-                    placeholder="Search PNR…"
-                    className={cn("h-8 text-xs mt-1 font-mono", filters.pnr && "border-primary/50 bg-primary/5")}
+                    placeholder="Enter PNR..."
+                    className={cn("h-8 text-xs bg-slate-50 border-border rounded-xl  focus-visible:ring-primary/20", filters.pnr && "border-primary/50 bg-primary/10 text-primary")}
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</label>
-                  <div className="mt-1">
-                    <InlineFilter
-                      active={filters.status !== "all"}
-                      label="Status"
-                      value={filters.status}
-                      onChange={v => setFilters(f => ({ ...f, status: v }))}
-                      options={STATUS_OPTIONS.filter(s => statusValues.includes(s)).map(s => ({ value: s, label: STATUS_LABEL[s] }))}
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Booking Status</label>
+                  <InlineFilter
+                    active={filters.status !== "all"}
+                    label="Status"
+                    value={filters.status}
+                    onChange={v => setFilters(f => ({ ...f, status: v }))}
+                    options={STATUS_OPTIONS.filter(s => statusValues.includes(s)).map(s => ({ value: s, label: STATUS_LABEL[s] }))}
+                  />
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Agent</label>
-                  <div className="mt-1">
-                    <InlineFilter
-                      active={filters.agent !== "all"}
-                      label="Agent"
-                      value={filters.agent}
-                      onChange={v => setFilters(f => ({ ...f, agent: v }))}
-                      options={agentValues.map(a => ({ value: a, label: a }))}
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Travel Agent</label>
+                  <InlineFilter
+                    active={filters.agent !== "all"}
+                    label="Agent"
+                    value={filters.agent}
+                    onChange={v => setFilters(f => ({ ...f, agent: v }))}
+                    options={agentValues.map(a => ({ value: a, label: a }))}
+                  />
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Group</label>
-                  <div className="mt-1">
-                    <InlineFilter
-                      active={filters.group !== "all"}
-                      label="Group"
-                      value={filters.group}
-                      onChange={v => setFilters(f => ({ ...f, group: v }))}
-                      options={groupValues.map(g => ({ value: g, label: g }))}
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Package Group</label>
+                  <InlineFilter
+                    active={filters.group !== "all"}
+                    label="Group"
+                    value={filters.group}
+                    onChange={v => setFilters(f => ({ ...f, group: v }))}
+                    options={groupValues.map(g => ({ value: g, label: g }))}
+                  />
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Hotel</label>
-                  <div className="mt-1">
-                    <InlineFilter
-                      active={filters.hotel !== "all"}
-                      label="Hotel"
-                      value={filters.hotel}
-                      onChange={v => setFilters(f => ({ ...f, hotel: v }))}
-                      options={hotelValues.map(h => ({ value: h, label: h }))}
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Hotel Name</label>
+                  <InlineFilter
+                    active={filters.hotel !== "all"}
+                    label="Hotel"
+                    value={filters.hotel}
+                    onChange={v => setFilters(f => ({ ...f, hotel: v }))}
+                    options={hotelValues.map(h => ({ value: h, label: h }))}
+                  />
                 </div>
               </div>
             </PopoverContent>
           </Popover>
 
-          <div className="flex items-center gap-1 rounded-md bg-background border border-border/60 p-0.5">
-          <button
-            onClick={() => setDensity("comfortable")}
-            className={cn(
-              "inline-flex items-center gap-1 h-6 px-2 rounded text-[11px] font-semibold transition-colors",
-              density === "comfortable" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-            title="Comfortable density"
-          >
-            <Rows3 className="h-3 w-3" /> Comfortable
-          </button>
-          <button
-            onClick={() => setDensity("compact")}
-            className={cn(
-              "inline-flex items-center gap-1 h-6 px-2 rounded text-[11px] font-semibold transition-colors",
-              density === "compact" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-            title="Compact density"
-          >
-            <Rows2 className="h-3 w-3" /> Compact
-          </button>
-        </div>
+          <div className="flex items-center gap-1 rounded-xl bg-slate-100 border border-border p-1 shadow-inner">
+            <button
+              onClick={() => setDensity("comfortable")}
+              className={cn(
+                "inline-flex items-center gap-2 h-7 px-3 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                density === "comfortable" ? "bg-primary text-white shadow-lg" : "text-slate-400 hover:text-slate-600"
+              )}
+              title="Comfortable density"
+            >
+              <Rows3 className="h-3 w-3" /> COMFORT
+            </button>
+            <button
+              onClick={() => setDensity("compact")}
+              className={cn(
+                "inline-flex items-center gap-2 h-7 px-3 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                density === "compact" ? "bg-primary text-white shadow-lg" : "text-slate-400 hover:text-slate-600"
+              )}
+              title="Compact density"
+            >
+              <Rows2 className="h-3 w-3" /> COMPACT
+            </button>
+          </div>
         </div>
       </div>
 
@@ -743,15 +737,15 @@ export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onP
             ))}
             <col style={{ width: "48px" }} />
           </colgroup>
-          <thead className="sticky top-0 z-10 bg-gradient-to-b from-muted/80 to-muted/50 backdrop-blur-sm">
-            <tr className="border-b border-border/60">
+          <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-md">
+            <tr className="border-b border-border/60 bg-slate-50/50">
               {visibleOrderedColumns.map((column) => (
                 <HeaderCell key={column.key} colKey={column.key} label={column.label} className={column.headerClassName} />
               ))}
               <th className="px-2 border-r border-border/30 last:border-r-0" />
             </tr>
 
-            <tr className="border-b-2 border-border/60 bg-background/60">
+            <tr className="border-b-2 border-border/60 bg-white/50">
               {visibleOrderedColumns.map((column) => (
                 <Fragment key={`filter-${column.key}`}>{renderFilterCell(column.key)}</Fragment>
               ))}
@@ -804,27 +798,36 @@ export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onP
                     onKeyDown={(e) => handleRowKey(e, b.id)}
                     onClick={() => navigate(`/bookings/${b.id}`)}
                     className={cn(
-                      "group relative border-b border-border/30 cursor-pointer transition-all outline-none",
-                      "hover:bg-primary/5 hover:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.15)]",
-                      "focus-visible:bg-primary/10 focus-visible:shadow-[inset_0_0_0_2px_hsl(var(--primary)/0.4)]",
-                      rowIdx % 2 === 1 && "bg-muted/20",
-                      "before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1",
-                      accent.stripe
+                      "group border-b border-slate-200 hover:bg-slate-50 transition-all cursor-pointer relative",
+                      rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/30"
                     )}
                   >
                     {visibleOrderedColumns.map((column) => (
                       <Fragment key={`${b.id}-${column.key}`}>{renderBodyCell(b, column.key)}</Fragment>
                     ))}
-                    <td className={cn(density === "compact" ? "px-2 py-1" : "px-2 py-2", "text-center")}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-md opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/bookings/${b.id}`); }}
-                        title="View booking"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
+                    <td className={cn(density === "compact" ? "px-2 py-1" : "px-2 py-2", "text-center whitespace-nowrap")}>
+                      <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-md"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/bookings/${b.id}`); }}
+                          title="View booking"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        {isAdmin && onDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-md text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={(e) => { e.stopPropagation(); onDelete(b.id); }}
+                            title="Delete booking"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -834,29 +837,36 @@ export function BookingsExcelTable({ bookings, pageSize, page, onPageChange, onP
         </table>
       </div>
 
-      {/* Sticky footer summary */}
-      <div className="border-t border-border/60 bg-gradient-to-r from-muted/40 to-muted/10 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-[11px]">
-        <div className="flex items-center gap-4">
-          <span className="font-semibold text-foreground">
-            Showing <span className="text-primary">{paged.length}</span> of <span className="text-primary">{sorted.length}</span> bookings
-          </span>
-          <span className="text-muted-foreground hidden sm:inline">·</span>
-          <span className="font-semibold text-foreground tabular-nums">
-            Total: <span className="text-emerald-600 dark:text-emerald-400">${stats.total.toLocaleString()}</span>
-          </span>
-          <span className="text-muted-foreground hidden sm:inline">·</span>
-          <span className="font-semibold text-foreground">
-            Pending: <span className="text-amber-600 dark:text-amber-400">{stats.pending}</span>
-          </span>
-          <span className="text-muted-foreground hidden sm:inline">·</span>
-          <span className="font-semibold text-foreground">
-            Confirmed: <span className="text-emerald-600 dark:text-emerald-400">{stats.confirmed}</span>
-          </span>
+      {/* Sticky footer summary - Professional BI Style */}
+      <div className="border-t border-border/60 bg-slate-50 px-4 py-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-success/5 via-transparent to-transparent pointer-events-none" />
+        <div className="flex flex-wrap items-center justify-between gap-4 text-[10px] relative z-10">
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col">
+              <span className="text-slate-400 font-bold uppercase tracking-widest mb-0.5">Visible BOOKINGS</span>
+              <span className="text-slate-600 font-bold"><span className="text-primary">{paged.length}</span> / {sorted.length}</span>
+            </div>
+            <div className="h-6 w-px bg-border/40" />
+            <div className="flex flex-col">
+              <span className="text-slate-400 font-bold uppercase tracking-widest mb-0.5">Asset Valuation</span>
+              <span className="text-emerald-600 font-bold tabular-nums tracking-tighter">${stats.total.toLocaleString()}</span>
+            </div>
+            <div className="h-6 w-px bg-border/40" />
+            <div className="flex flex-col">
+              <span className="text-slate-400 font-bold uppercase tracking-widest mb-0.5">Active review</span>
+              <span className="text-amber-600 font-bold">{stats.pending} BOOKINGS</span>
+            </div>
+            <div className="h-6 w-px bg-border/40" />
+            <div className="flex flex-col">
+              <span className="text-slate-400 font-bold uppercase tracking-widest mb-0.5">Confirmed</span>
+              <span className="text-primary font-bold">{stats.confirmed} BOOKINGS</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {sorted.length > pageSize && (
-        <div className="border-t border-border/40 px-4">
+        <div className="bg-white border-t border-border/60">
           <TablePagination
             currentPage={page}
             totalPages={totalPages}

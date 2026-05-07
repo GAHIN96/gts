@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { 
-  BadgePlus, 
-  Plus, 
-  Search, 
+import {
+  BadgePlus,
+  Plus,
+  Search,
   Filter,
   DollarSign,
   ShoppingBag,
@@ -48,12 +48,12 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { 
-  useAdditionalServices, 
-  useAdditionalServiceStats, 
+import {
+  useAdditionalServices,
+  useAdditionalServiceStats,
   useUpdateAdditionalService,
   useDeleteAdditionalService,
-  type AdditionalService 
+  type AdditionalService
 } from "@/hooks/useAdditionalServices";
 import { ImageCarousel } from "@/components/ui/image-carousel";
 import { useBannerSettings } from "@/hooks/useBannerSettings";
@@ -131,10 +131,10 @@ const AdditionalServices = () => {
   const [editingService, setEditingService] = useState<AdditionalService | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  
+
   const { bannerImages } = useBannerSettings();
-  const heroImages = bannerImages.additionalServices?.length > 0 
-    ? bannerImages.additionalServices 
+  const heroImages = bannerImages.additionalServices?.length > 0
+    ? bannerImages.additionalServices
     : [heroAdditionalServices];
 
   const { data: services, isLoading } = useAdditionalServices();
@@ -182,8 +182,8 @@ const AdditionalServices = () => {
 
   return (
     <div className="space-y-6">
-      <AdditionalServiceForm 
-        open={formOpen} 
+      <AdditionalServiceForm
+        open={formOpen}
         onOpenChange={(open) => {
           setFormOpen(open);
           if (!open) setEditingService(null);

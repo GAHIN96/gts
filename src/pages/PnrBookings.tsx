@@ -345,7 +345,7 @@ const PnrBookings = () => {
                           <TableCell>
                             <input type="checkbox" checked={selectedBookings.has(booking.id)} onChange={() => toggleSelect(booking.id)} className="rounded" />
                           </TableCell>
-                          <TableCell className="font-mono font-bold">{booking.pnr}</TableCell>
+                          <TableCell className="font-sans font-medium font-bold">{booking.pnr}</TableCell>
                           <TableCell>{booking.route}</TableCell>
                           <TableCell>{format(new Date(booking.flight_date), "dd MMM yyyy")}</TableCell>
                           <TableCell>{booking.airline}</TableCell>

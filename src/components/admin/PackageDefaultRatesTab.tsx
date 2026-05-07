@@ -14,7 +14,7 @@ import type { PackageHotel } from "@/hooks/usePackageHotels";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
 
 const GUEST_TYPES = ["Adult", "Child", "Infant"];
-const ROOM_TYPES = ["Single", "Double", "Triple", "Extra Bed", "Without-Bed", "Infant"];
+const ROOM_TYPES = ["Single", "Double", "Double + Extra Bed", "Triple"];
 
 export interface RateRow {
   hotel_id: string;
@@ -63,8 +63,8 @@ export function PackageDefaultRatesTab({ packageHotels, rates, onRatesChange }: 
       // First time: auto-generate Adult, Child, Infant rows
       const autoRows: RateRow[] = [
         { hotel_id: hotelId, guest_type: "Adult", room_type: "Double", capacity: 10, count: 1, price: 0, commission: 0 },
-        { hotel_id: hotelId, guest_type: "Child", room_type: "Extra Bed", capacity: 10, count: 1, price: 0, commission: 0 },
-        { hotel_id: hotelId, guest_type: "Infant", room_type: "Infant", capacity: 10, count: 1, price: 0, commission: 0 },
+        { hotel_id: hotelId, guest_type: "Child", room_type: "Double + Extra Bed", capacity: 10, count: 1, price: 0, commission: 0 },
+        { hotel_id: hotelId, guest_type: "Infant", room_type: "Single", capacity: 10, count: 1, price: 0, commission: 0 },
       ];
       onRatesChange([...rates, ...autoRows]);
     } else {
@@ -80,9 +80,7 @@ export function PackageDefaultRatesTab({ packageHotels, rates, onRatesChange }: 
       { guest_type: "Adult", room_type: "Single", capacity: 10, count: 1, price: 0, commission: 0 },
       { guest_type: "Adult", room_type: "Double", capacity: 10, count: 1, price: 0, commission: 0 },
       { guest_type: "Adult", room_type: "Triple", capacity: 10, count: 1, price: 0, commission: 0 },
-      { guest_type: "Child", room_type: "Extra Bed", capacity: 10, count: 1, price: 0, commission: 0 },
-      { guest_type: "Child", room_type: "Without-Bed", capacity: 10, count: 1, price: 0, commission: 0 },
-      { guest_type: "Infant", room_type: "Infant", capacity: 10, count: 1, price: 0, commission: 0 },
+      { guest_type: "Child", room_type: "Double + Extra Bed", capacity: 10, count: 1, price: 0, commission: 0 },
     ];
     const newRows = templates.map(t => ({ ...t, hotel_id: hotelId }));
     onRatesChange([...rates, ...newRows]);

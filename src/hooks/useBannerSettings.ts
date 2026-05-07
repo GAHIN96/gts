@@ -5,6 +5,8 @@ import { toast } from "sonner";
 // Default hero images from assets
 import heroFlightsImg from "@/assets/hero-flights.jpg";
 import heroHotelsImg from "@/assets/hero-hotels.jpg";
+import flightHeroImg from "@/assets/flight-hero.jpg";
+import hotelHeroImg from "@/assets/hotel-hero.jpg";
 import heroToursImg from "@/assets/hero-tours.jpg";
 import heroVisaImg from "@/assets/hero-visa.jpg";
 import heroSpecialRequestsImg from "@/assets/hero-special-requests.jpg";
@@ -66,8 +68,8 @@ export const defaultBanners: BannerSettings = {
 };
 
 export const defaultBannerImages: BannerImages = {
-  flights: [heroFlightsImg],
-  hotels: [heroHotelsImg],
+  flights: [heroFlightsImg, flightHeroImg],
+  hotels: [heroHotelsImg, hotelHeroImg],
   tours: [heroToursImg],
   visas: [heroVisaImg],
   specialRequests: [heroSpecialRequestsImg],

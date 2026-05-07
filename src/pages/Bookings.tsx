@@ -18,6 +18,7 @@ import {
   XCircle,
   AlertCircle,
   MoreHorizontal,
+  Trash2,
   Mail,
   PlaneTakeoff,
   Building2,
@@ -76,7 +77,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useAuth } from "@/contexts/AuthContext";
-import { useBookings, useUpdateBooking, type Booking } from "@/hooks/useBookings";
+import { useBookings, useUpdateBooking, useDeleteBooking, type Booking } from "@/hooks/useBookings";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { VoucherPreviewDialog } from "@/components/booking/VoucherPreviewDialog";
@@ -88,22 +89,22 @@ import { cn } from "@/lib/utils";
 import { BookingsExcelTable } from "@/components/bookings/BookingsExcelTable";
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ElementType; bg: string; border: string; glow: string }> = {
-  draft: { label: "Draft", color: "text-muted-foreground", icon: Clock, bg: "bg-muted/60", border: "border-muted", glow: "" },
-  pending_payment: { label: "Pending Payment", color: "text-gold", icon: AlertCircle, bg: "bg-gold/10", border: "border-gold/25", glow: "shadow-gold/10" },
-  payment_under_review: { label: "Under Review", color: "text-primary", icon: Clock, bg: "bg-primary/10", border: "border-primary/25", glow: "shadow-primary/10" },
-  confirmed: { label: "Confirmed", color: "text-success", icon: CheckCircle, bg: "bg-success/10", border: "border-success/25", glow: "shadow-success/10" },
-  canceled: { label: "Canceled", color: "text-destructive", icon: XCircle, bg: "bg-destructive/10", border: "border-destructive/25", glow: "" },
-  refunded: { label: "Refunded", color: "text-muted-foreground", icon: DollarSign, bg: "bg-muted/60", border: "border-muted", glow: "" },
+  draft: { label: "Draft", color: "text-slate-500", icon: Clock, bg: "bg-slate-50", border: "border-slate-200", glow: "" },
+  pending_payment: { label: "Pending Payment", color: "text-amber-600", icon: AlertCircle, bg: "bg-amber-50", border: "border-amber-200", glow: "" },
+  payment_under_review: { label: "Under Review", color: "text-blue-600", icon: Clock, bg: "bg-blue-50", border: "border-blue-200", glow: "" },
+  confirmed: { label: "Confirmed", color: "text-emerald-600", icon: CheckCircle, bg: "bg-emerald-50", border: "border-emerald-200", glow: "" },
+  canceled: { label: "Canceled", color: "text-rose-600", icon: XCircle, bg: "bg-rose-50", border: "border-rose-200", glow: "" },
+  refunded: { label: "Refunded", color: "text-slate-500", icon: DollarSign, bg: "bg-slate-50", border: "border-slate-200", glow: "" },
 };
 
 const bookingTypeConfig: Record<string, { label: string; icon: React.ElementType; color: string; gradient: string; barColor: string }> = {
-  package: { label: "Group Packages", icon: Box, color: "text-primary", gradient: "from-primary to-primary/70", barColor: "bg-primary" },
-  custom_group: { label: "Custom Groups", icon: Layers, color: "text-primary", gradient: "from-primary to-coral/70", barColor: "bg-coral" },
-  flight: { label: "Flights", icon: Send, color: "text-primary", gradient: "from-primary to-primary/70", barColor: "bg-sky-500" },
-  hotel: { label: "Hotels", icon: Building2, color: "text-primary", gradient: "from-primary to-primary/70", barColor: "bg-gold" },
-  tour: { label: "Tours", icon: Globe, color: "text-primary", gradient: "from-primary to-primary/70", barColor: "bg-success" },
-  visa: { label: "Visas", icon: Fingerprint, color: "text-primary", gradient: "from-primary to-primary/70", barColor: "bg-purple-500" },
-  transfer: { label: "Transfers", icon: Navigation, color: "text-primary", gradient: "from-primary to-primary/70", barColor: "bg-cyan-500" },
+  package: { label: "Group Packages", icon: Box, color: "text-blue-600", gradient: "from-blue-600 to-blue-400", barColor: "bg-blue-600" },
+  custom_group: { label: "Custom Groups", icon: Layers, color: "text-indigo-600", gradient: "from-indigo-600 to-indigo-400", barColor: "bg-indigo-600" },
+  flight: { label: "Flights", icon: Send, color: "text-sky-600", gradient: "from-sky-600 to-sky-400", barColor: "bg-sky-600" },
+  hotel: { label: "Hotels", icon: Building2, color: "text-amber-600", gradient: "from-amber-600 to-amber-400", barColor: "bg-amber-600" },
+  tour: { label: "Tours", icon: Globe, color: "text-emerald-600", gradient: "from-emerald-600 to-emerald-400", barColor: "bg-emerald-600" },
+  visa: { label: "Visas", icon: Fingerprint, color: "text-purple-600", gradient: "from-purple-600 to-purple-400", barColor: "bg-purple-600" },
+  transfer: { label: "Transfers", icon: Navigation, color: "text-cyan-600", gradient: "from-cyan-600 to-cyan-400", barColor: "bg-cyan-600" },
 };
 
 const Bookings = () => {
@@ -112,6 +113,7 @@ const Bookings = () => {
   const [searchParams] = useSearchParams();
   const { data: bookings, isLoading } = useBookings();
   const updateBooking = useUpdateBooking();
+  const deleteBooking = useDeleteBooking();
 
   const isAdmin = role === "admin";
   const isFinance = role === "finance";
@@ -350,6 +352,14 @@ const Bookings = () => {
       await sendStatusNotification(booking, newStatus);
       toast.success("Booking status updated");
     } catch { toast.error("Failed to update status"); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this booking? This action cannot be undone.")) return;
+    try {
+      await deleteBooking.mutateAsync(id);
+      toast.success("Booking deleted successfully");
+    } catch { toast.error("Failed to delete booking"); }
   };
 
   const viewDetails = (booking: Booking) => {
@@ -743,10 +753,10 @@ const Bookings = () => {
             {/* Type Icon */}
             {visibleColumns.has("type") && (
             <div className={cn(
-              "h-11 w-11 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-sm shrink-0 transition-transform group-hover:scale-105",
-              typeConfig.gradient
+              "h-12 w-12 rounded-2xl bg-muted/40 flex items-center justify-center shrink-0 transition-transform group-hover:scale-105",
+              typeConfig.color
             )}>
-              <TypeIcon className="h-5 w-5 text-white" />
+              <TypeIcon className="h-6 w-6" />
             </div>
             )}
 
@@ -756,7 +766,7 @@ const Bookings = () => {
                 {visibleColumns.has("title") && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-sm truncate">{getBookingTitle(booking)}</p>
-                  <span className="font-mono text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md shrink-0">
+                  <span className="font-sans font-medium text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md shrink-0">
                     {booking.booking_number}
                   </span>
                 </div>
@@ -817,13 +827,13 @@ const Bookings = () => {
             {/* Status Badge */}
             {visibleColumns.has("status") && (
             <Badge className={cn(
-              "gap-1.5 text-[10px] font-semibold rounded-lg border shadow-sm px-2.5 py-1 shrink-0 min-w-[100px] justify-center",
-              status.bg, status.color, status.border, status.glow
+              "gap-1.5 text-[10px] font-bold rounded-lg border shadow-sm px-2.5 py-1 shrink-0 min-w-[100px] justify-center uppercase tracking-wider",
+              status.bg, status.color, status.border
             )}>
               {(booking.status === "pending_payment" || booking.status === "payment_under_review") && (
                 <span className="relative flex h-2 w-2">
-                  <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", booking.status === "pending_payment" ? "bg-gold" : "bg-primary")} />
-                  <span className={cn("relative inline-flex rounded-full h-2 w-2", booking.status === "pending_payment" ? "bg-gold" : "bg-primary")} />
+                  <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", booking.status === "pending_payment" ? "bg-amber-400" : "bg-blue-400")} />
+                  <span className={cn("relative inline-flex rounded-full h-2 w-2", booking.status === "pending_payment" ? "bg-amber-500" : "bg-blue-500")} />
                 </span>
               )}
               <StatusIcon className="h-3 w-3" />
@@ -890,10 +900,15 @@ const Bookings = () => {
                       <StickyNote className="h-4 w-4" /> Quick Note
                     </DropdownMenuItem>
                   )}
-                  {canManage && booking.status !== "canceled" && booking.status !== "refunded" && !isPending && (
-                    <DropdownMenuItem onClick={() => handleStatusChange(booking, "canceled")} className="gap-2 rounded-lg text-destructive">
-                      <XCircle className="h-4 w-4" /> Cancel Booking
-                    </DropdownMenuItem>
+                  {isAdmin && (
+                    <>
+                      <DropdownMenuItem 
+                        onClick={() => handleDelete(booking.id)} 
+                        className="gap-2 rounded-lg text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete Booking
+                      </DropdownMenuItem>
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -903,150 +918,110 @@ const Bookings = () => {
       })}
     </div>
   );
-
+ 
   return (
-    <div className="space-y-4 max-w-[1400px] mx-auto animate-fade-in">
-      {/* ═══════ COMPACT UNIFIED HEADER ═══════ */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.04] via-transparent to-coral/[0.03] pointer-events-none" />
-
-        {/* Top row: title + stats + actions */}
-        <div className="relative px-5 py-3.5 flex items-center justify-between gap-4 border-b border-border/40">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-md shrink-0">
-              <Package className="h-5 w-5 text-white" />
+    <div className="space-y-4 max-w-[1800px] mx-auto px-4 sm:px-6">
+      {/* PROFESSIONAL BI HEADER */}
+      <div className="relative overflow-hidden rounded-3xl border border-muted bg-card shadow-sm">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-blue-500/5 pointer-events-none" />
+        
+        {/* Main Header Strip */}
+        <div className="relative px-6 py-6 flex items-center justify-between gap-6 border-b border-muted/50">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="h-12 w-12 rounded-2xl bg-primary flex items-center justify-center shadow-md shrink-0">
+              <Package className="h-6 w-6 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-base font-bold text-foreground tracking-tight leading-tight">
+              <h1 className="text-2xl font-bold text-foreground tracking-tight leading-none">
                 {canManage ? "Bookings Management" : "My Bookings"}
               </h1>
-              <p className="text-[11px] text-muted-foreground truncate">
-                {canManage ? "Review, approve, and manage all bookings" : "View your booking history"}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-1 truncate">
+                {canManage ? "Manage all travel bookings and operations" : "View your travel booking history"}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            {/* Inline stats pills */}
-            <div className="hidden lg:flex items-center gap-1.5">
+          <div className="flex items-center gap-4 shrink-0">
+            {/* Professional Stats Matrix */}
+            <div className="hidden xl:flex items-center gap-3">
               {[
-                { label: "Total", value: stats.total, icon: Layers, tone: "text-primary bg-primary/10" },
-                { label: "Confirmed", value: stats.confirmed, icon: CheckSquare, tone: "text-success bg-success/10" },
-                { label: "Pending", value: stats.pending, icon: Clock3, tone: "text-gold bg-gold/10" },
-                { label: "Revenue", value: `$${stats.revenue.toLocaleString()}`, icon: TrendingUp, tone: "text-primary bg-primary/10" },
+                { label: "Total Bookings", value: stats.total, icon: Layers, tone: "text-blue-600 bg-blue-50", border: "border-blue-100" },
+                { label: "Confirmed", value: stats.confirmed, icon: CheckSquare, tone: "text-emerald-600 bg-emerald-50", border: "border-emerald-100" },
+                { label: "Pending", value: stats.pending, icon: Clock3, tone: "text-amber-600 bg-amber-50", border: "border-amber-100" },
+                { label: "Total Revenue", value: `$${stats.revenue.toLocaleString()}`, icon: TrendingUp, tone: "text-primary bg-primary/5", border: "border-primary/10" },
               ].map((s) => (
-                <div key={s.label} className="flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-lg bg-muted/40">
-                  <div className={cn("h-5 w-5 rounded-md flex items-center justify-center", s.tone)}>
-                    <s.icon className="h-3 w-3" />
+                <div key={s.label} className={cn("flex flex-col px-4 py-2 rounded-2xl bg-card border shadow-sm transition-all hover:shadow-md", s.border)}>
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">{s.label}</span>
+                  <div className="flex items-center gap-2">
+                    <s.icon className={cn("h-4 w-4", s.tone.split(' ')[0])} />
+                    <span className="text-base font-bold text-foreground tabular-nums">{s.value}</span>
                   </div>
-                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{s.label}</span>
-                  <span className="text-xs font-bold text-foreground">{s.value}</span>
                 </div>
               ))}
             </div>
 
-            {canManage && (
-              <div className="flex gap-1.5">
-                <Button variant="outline" size="sm" onClick={exportToExcel} disabled={!filteredBookings?.length} className="rounded-lg gap-1.5 h-9 border-border/60 text-xs">
-                  <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
-                </Button>
-                <Button variant="outline" size="sm" onClick={exportToPDF} disabled={!filteredBookings?.length} className="rounded-lg gap-1.5 h-9 border-border/60 text-xs">
-                  <Download className="h-3.5 w-3.5" /> PDF
-                </Button>
-              </div>
-            )}
+            <div className="h-10 w-px bg-muted mx-2 hidden xl:block" />
+
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={exportToExcel} disabled={!filteredBookings?.length} className="rounded-xl border-muted bg-card font-bold text-[11px] uppercase tracking-wider h-10 px-4">
+                <FileSpreadsheet className="h-4 w-4 mr-2 text-green-600" /> Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportToPDF} disabled={!filteredBookings?.length} className="rounded-xl border-muted bg-card font-bold text-[11px] uppercase tracking-wider h-10 px-4">
+                <Download className="h-4 w-4 mr-2 text-blue-600" /> PDF
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Mobile stats (visible below lg) */}
-        <div className="lg:hidden relative px-5 py-2.5 flex flex-wrap gap-1.5 border-b border-border/40">
+        {/* Mobile stats Strip */}
+        <div className="xl:hidden relative px-6 py-4 flex flex-wrap gap-2 border-b bg-muted/30">
           {[
-            { label: "Total", value: stats.total, icon: Layers, tone: "text-primary bg-primary/10" },
-            { label: "Confirmed", value: stats.confirmed, icon: CheckSquare, tone: "text-success bg-success/10" },
-            { label: "Pending", value: stats.pending, icon: Clock3, tone: "text-gold bg-gold/10" },
-            { label: "Revenue", value: `$${stats.revenue.toLocaleString()}`, icon: TrendingUp, tone: "text-primary bg-primary/10" },
+            { label: "Total", value: stats.total, color: "text-blue-600", bg: "bg-blue-50" },
+            { label: "Confirmed", value: stats.confirmed, color: "text-emerald-600", bg: "bg-emerald-50" },
+            { label: "Pending", value: stats.pending, color: "text-amber-600", bg: "bg-amber-50" },
+            { label: "Revenue", value: `$${stats.revenue.toLocaleString()}`, color: "text-primary", bg: "bg-primary/5" },
           ].map((s) => (
-            <div key={s.label} className="flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-lg bg-muted/40">
-              <div className={cn("h-5 w-5 rounded-md flex items-center justify-center", s.tone)}>
-                <s.icon className="h-3 w-3" />
-              </div>
-              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{s.label}</span>
-              <span className="text-xs font-bold text-foreground">{s.value}</span>
+            <div key={s.label} className={cn("flex items-center gap-2 px-3 py-1.5 rounded-xl border shadow-sm bg-card", s.bg.replace('bg-', 'border-'))}>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{s.label}:</span>
+              <span className={cn("text-xs font-bold", s.color)}>{s.value}</span>
             </div>
           ))}
         </div>
-
-        {/* Bottom row: distribution bar + pending alert */}
-        {canManage && stats.total > 0 && (
-          <div className="relative px-5 py-2.5 flex items-center gap-4 flex-wrap">
-            <div className="flex-1 min-w-[260px] flex items-center gap-3">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">Mix</span>
-              <div className="flex-1 flex h-2 rounded-full overflow-hidden bg-muted/40">
-                {Object.entries(bookingTypeConfig).map(([key, config]) => {
-                  const count = key === "package" ? stats.packages : key === "custom_group" ? stats.custom_group : key === "flight" ? stats.flights : key === "hotel" ? stats.hotels : key === "tour" ? stats.tours : key === "visa" ? stats.visas : stats.transfers;
-                  const pct = stats.total > 0 ? (count / stats.total) * 100 : 0;
-                  if (pct === 0) return null;
-                  return (
-                    <div
-                      key={key}
-                      className={cn("h-full transition-all duration-500", config.barColor)}
-                      style={{ width: `${pct}%` }}
-                      title={`${config.label}: ${count} (${Math.round(pct)}%)`}
-                    />
-                  );
-                })}
-              </div>
-              <div className="hidden md:flex items-center gap-2.5 shrink-0">
-                {Object.entries(bookingTypeConfig).map(([key, config]) => {
-                  const count = key === "package" ? stats.packages : key === "custom_group" ? stats.custom_group : key === "flight" ? stats.flights : key === "hotel" ? stats.hotels : key === "tour" ? stats.tours : key === "visa" ? stats.visas : stats.transfers;
-                  if (count === 0) return null;
-                  return (
-                    <div key={key} className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                      <div className={cn("h-1.5 w-1.5 rounded-full", config.barColor)} />
-                      <span className="font-medium">{config.label}</span>
-                      <span className="font-bold text-foreground">{count}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {pendingBookings.length > 0 && (
-              <button
-                onClick={() => setStatusFilter("pending")}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gold/30 bg-gold/5 hover:bg-gold/10 transition-colors shrink-0"
-              >
-                <div className="h-2 w-2 rounded-full bg-gold animate-pulse" />
-                <span className="text-xs font-semibold text-foreground">
-                  {pendingBookings.length} awaiting review
-                </span>
-                <Badge className="bg-gold/15 text-gold border-gold/25 rounded-md text-[10px] font-bold h-5 px-1.5">{pendingBookings.length}</Badge>
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ═══════ SEARCH & FILTERS ═══════ */}
       <div className="flex flex-col sm:flex-row gap-3 animate-fade-in" style={{ animationDelay: "0.15s" }}>
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by booking #, service, agency, or passenger..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 h-11 rounded-xl border-border/60 bg-card"
-          />
+        <div className="relative flex-1 flex gap-2">
+          <div className="relative flex-1 group/search">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by ID, name or agency..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-11 h-11 rounded-2xl border-muted bg-card text-sm font-medium focus-visible:ring-primary/20"
+            />
+          </div>
+          {canManage && pendingBookings.length > 0 && (
+            <button
+              onClick={() => setStatusFilter("payment_under_review")}
+              className="hidden lg:flex items-center gap-3 px-5 h-11 rounded-2xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 transition-all shadow-sm shrink-0 whitespace-nowrap group/review"
+            >
+              <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              <span className="text-[11px] font-bold tracking-wider uppercase">
+                {pendingBookings.length} PENDING REVIEW
+              </span>
+            </button>
+          )}
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-52 h-11 rounded-xl border-border/60 bg-card">
-            <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
-            <SelectValue placeholder="Filter by status" />
+          <SelectTrigger className="w-full sm:w-48 h-11 rounded-2xl border-muted bg-card text-xs font-bold uppercase tracking-wider">
+            <Filter className="h-4 w-4 mr-2 text-primary" />
+            <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
-          <SelectContent className="rounded-xl">
-            <SelectItem value="all">All Statuses</SelectItem>
+          <SelectContent className="rounded-2xl bg-card border-muted text-foreground">
+            <SelectItem value="all" className="text-xs font-bold uppercase tracking-wider">All Statuses</SelectItem>
             {Object.entries(statusConfig).map(([key, config]) => (
-              <SelectItem key={key} value={key}>{config.label}</SelectItem>
+              <SelectItem key={key} value={key} className="text-xs font-bold uppercase tracking-wider">{config.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1058,17 +1033,11 @@ const Bookings = () => {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className={cn(
-                  "w-full sm:w-auto h-11 rounded-xl border-border/60 gap-2 font-normal",
+                  "h-9 rounded-xl border-border/60 gap-2 font-normal text-xs",
                   (dateFrom || dateTo) && "border-primary/40 text-primary"
                 )}>
-                  <CalendarRange className="h-4 w-4" />
-                  {dateFrom && dateTo
-                    ? `${format(dateFrom, "dd/MM/yyyy")} – ${format(dateTo, "dd/MM/yyyy")}`
-                    : dateFrom
-                      ? `From ${format(dateFrom, "dd/MM/yyyy")}`
-                      : dateTo
-                        ? `To ${format(dateTo, "dd/MM/yyyy")}`
-                        : "Date Range"}
+                  <CalendarRange className="h-3.5 w-3.5" />
+                  Date
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-4 rounded-xl" align="end">
@@ -1126,13 +1095,13 @@ const Bookings = () => {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className={cn(
-                  "w-full sm:w-auto h-11 rounded-xl border-border/60 gap-2 font-normal",
+                  "h-9 rounded-xl border-border/60 gap-2 font-normal text-xs",
                   activeFilterCount > 0 && "border-primary/40 text-primary"
                 )}>
-                  <SlidersHorizontal className="h-4 w-4" />
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
                   Filter
                   {activeFilterCount > 0 && (
-                    <Badge className="h-5 min-w-5 px-1.5 rounded-md bg-primary text-primary-foreground text-[10px] font-bold ml-0.5">
+                    <Badge className="h-4 min-w-4 px-1 rounded-md bg-primary text-primary-foreground text-[9px] font-bold ml-0.5">
                       {activeFilterCount}
                     </Badge>
                   )}
@@ -1250,12 +1219,9 @@ const Bookings = () => {
             {/* Column Visibility Toggle */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-auto h-11 rounded-xl gap-2 border-border/60 font-normal">
-                  <Eye className="h-4 w-4" />
-                  Columns
-                  <Badge className="h-5 px-1.5 rounded-md bg-muted text-muted-foreground text-[10px] font-bold">
-                    {visibleColumns.size}/{allColumns.length}
-                  </Badge>
+                <Button variant="outline" className="h-9 rounded-xl gap-2 border-border/60 font-normal text-xs">
+                  <Eye className="h-3.5 w-3.5" />
+                  View
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52 rounded-xl p-2">
@@ -1359,9 +1325,9 @@ const Bookings = () => {
       {/* ═══════ TABBED TABLE ═══════ */}
       {canManage ? (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <div className="flex items-center gap-2 overflow-x-auto pb-3 scrollbar-hide">
             {[
-              { key: "all", label: "All", icon: Layers, color: "text-primary", count: stats.total },
+              { key: "all", label: "Global", icon: Layers, color: "text-primary", count: stats.total },
               ...Object.entries(bookingTypeConfig).map(([key, config]) => ({
                 key,
                 label: config.label,
@@ -1377,17 +1343,17 @@ const Bookings = () => {
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
                   className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 whitespace-nowrap border",
+                    "flex items-center gap-3 px-5 py-3 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all duration-300 border",
                     isActive
-                      ? "bg-primary text-primary-foreground border-primary shadow-md shadow-primary/20 scale-[1.02]"
-                      : "bg-card text-muted-foreground border-border/60 hover:border-primary/30 hover:text-foreground hover:bg-muted/30"
+                      ? "bg-primary text-white border-primary shadow-[0_8px_20px_rgba(var(--primary-rgb),0.3)] scale-[1.02]"
+                      : "bg-white text-slate-400 border-border/60 hover:border-primary/20 hover:text-slate-600 hover:bg-slate-50"
                   )}
                 >
-                  <Icon className={cn("h-4 w-4", isActive ? "text-primary-foreground" : tab.color)} />
+                  <Icon className={cn("h-4 w-4", isActive ? "text-white" : tab.color)} />
                   <span>{tab.label}</span>
                   <span className={cn(
-                    "text-[11px] font-bold px-1.5 py-0.5 rounded-md min-w-[22px] text-center leading-none",
-                    isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                    "text-[9px] font-bold px-2 py-0.5 rounded-lg min-w-[24px] text-center leading-none",
+                    isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-400"
                   )}>{tab.count}</span>
                 </button>
               );
@@ -1403,6 +1369,8 @@ const Bookings = () => {
             onPageSizeChange={(size) => { setBookingPageSize(size); setBookingPage(1); }}
             isLoading={isLoading}
             visibleColumns={visibleColumns}
+            isAdmin={isAdmin}
+            onDelete={handleDelete}
           />
         </Tabs>
       ) : (
@@ -1454,7 +1422,7 @@ const Bookings = () => {
               <StickyNote className="h-5 w-5 text-primary" />
               Quick Note
               {noteBooking && (
-                <span className="font-mono text-xs text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md ml-2">{noteBooking.booking_number}</span>
+                <span className="font-sans font-medium text-xs text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md ml-2">{noteBooking.booking_number}</span>
               )}
             </DialogTitle>
           </DialogHeader>

@@ -57,7 +57,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { AvailabilityCalendar } from "@/components/ui/availability-calendar";
-import { format, addDays, isSameDay, getDay, parseISO, differenceInDays } from "date-fns";
+import { format, addDays, isSameDay, getDay, parseISO, differenceInDays, startOfDay } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFlights, Flight } from "@/hooks/useFlights";
 import { Badge } from "@/components/ui/badge";
@@ -169,9 +169,9 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
   const { data: outSpecialFares = [] } = useFlightSpecialFares(selectedOutboundFlight?.id || null);
   const { data: retDefaultFares = [] } = useFlightDefaultFares(selectedReturnFlight?.id || null);
   const { data: retSpecialFares = [] } = useFlightSpecialFares(selectedReturnFlight?.id || null);
-  const { data: flights, isLoading } = useFlights();
-  const { airlines } = useAirlines();
-  const { data: citiesData } = useCities();
+  const { data: flights = [], isLoading } = useFlights();
+  const { airlines = [] } = useAirlines();
+  const { data: citiesData = [] } = useCities();
 
   // Build city → { airportCode, country, flagUrl } lookup from flights + cities tables
   const cityInfoMap = useMemo(() => {
@@ -534,6 +534,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     // Same airline preferred
     const sameAirline = returnSearchedFlights.filter(f => f.airline === outbound.airline);
     if (sameAirline.length > 0) return Math.min(...sameAirline.map(f => getEffectiveAdultPrice(f)));
+    if (returnSearchedFlights.length === 0) return 0;
     return Math.min(...returnSearchedFlights.map(f => getEffectiveAdultPrice(f)));
   }, [tripType, returnSearchedFlights, getEffectiveAdultPrice]);
 
@@ -546,15 +547,18 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
 
   const resultPriceRange = useMemo(() => {
     if (searchedFlights.length === 0) return [0, 10000] as [number, number];
-    const prices = searchedFlights.map(f => getDisplayPrice(f));
+    const prices = searchedFlights.map(f => getDisplayPrice(f)).filter(p => !isNaN(p));
+    if (prices.length === 0) return [0, 10000] as [number, number];
     return [Math.min(...prices), Math.max(...prices)] as [number, number];
   }, [searchedFlights, getDisplayPrice]);
 
   // Reset filters when new search results come in
   useEffect(() => {
     if (searchedFlights.length > 0) {
-      const prices = searchedFlights.map(f => getDisplayPrice(f));
-      setPriceRange([Math.min(...prices), Math.max(...prices)]);
+      const prices = searchedFlights.map(f => getDisplayPrice(f)).filter(p => !isNaN(p));
+      if (prices.length > 0) {
+        setPriceRange([Math.min(...prices), Math.max(...prices)]);
+      }
       setAirlineFilter([]);
       setStopsFilter([]);
       setTimeFilter([]);
@@ -796,6 +800,34 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     });
   };
 
+
+
+  const getLegAvailability = (from: string, to: string) => {
+    const available: Date[] = [];
+    const limited: Date[] = [];
+    const soldOut: Date[] = [];
+    if (!flights || !from || !to) return { available, limited, soldOut };
+    
+    const relevant = flights.filter(f => 
+      f.is_active && 
+      f.departure_city.toLowerCase().includes(from.toLowerCase()) && 
+      f.arrival_city.toLowerCase().includes(to.toLowerCase())
+    );
+    
+    const today = new Date();
+    for (let i = 0; i < 365; i++) {
+      const date = addDays(today, i);
+      const matching = getFlightsForDate(relevant, date);
+      if (matching.length > 0) {
+        const total = matching.reduce((sum, f) => sum + getAvailableSeats(f), 0);
+        if (total === 0) soldOut.push(date);
+        else if (total < 10) limited.push(date);
+        else available.push(date);
+      }
+    }
+    return { available, limited, soldOut };
+  };
+
   // Compute price maps for departure calendar
   const departurePrices = useMemo(() => {
     const prices: Record<string, number> = {};
@@ -811,7 +843,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     });
 
     const today = new Date();
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 365; i++) {
       const date = addDays(today, i);
       const matchingFlights = getFlightsForDate(relevantFlights, date);
       if (matchingFlights.length > 0) {
@@ -835,7 +867,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     });
 
     const startDate = departureDate ? addDays(departureDate, 1) : new Date();
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 365; i++) {
       const date = addDays(startDate, i);
       const matchingFlights = getFlightsForDate(relevantFlights, date);
       if (matchingFlights.length > 0) {
@@ -907,13 +939,13 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
       if (fromCity && !f.departure_city.toLowerCase().includes(fromCity.toLowerCase())) return false;
       if (toCity && !f.arrival_city.toLowerCase().includes(toCity.toLowerCase())) return false;
       // For one-way mode, exclude round_trip-only flights
-      if (tripType === "oneway" && f.trip_type === "round_trip") return false;
+      if (tripType === "oneway" && (f.trip_type === "round_trip" || f.trip_type === "roundtrip")) return false;
       // For round-trip mode, include ALL flight types (one-way + round-trip) to allow cross-airline combinations
       return true;
     });
 
     const today = new Date();
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 365; i++) {
       const date = addDays(today, i);
       const matchingFlights = getFlightsForDate(relevantFlights, date);
 
@@ -948,7 +980,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     });
 
     const startDate = departureDate ? addDays(departureDate, 1) : new Date();
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 365; i++) {
       const date = addDays(startDate, i);
       const matchingFlights = getFlightsForDate(relevantFlights, date);
 
@@ -1045,10 +1077,11 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
       
       setIsSearching(true);
       setShowResults(false);
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       let allResults: Flight[] = [];
-      for (const leg of multiCityLegs) {
+      for (let index = 0; index < multiCityLegs.length; index++) {
+        const leg = multiCityLegs[index];
         const legResults = flights.filter(f => {
           if (!f.is_active) return false;
           if (!f.departure_city.toLowerCase().includes(leg.from.toLowerCase())) return false;
@@ -1057,8 +1090,9 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
             const matchingFlights = getFlightsForDate([f], leg.date);
             if (matchingFlights.length === 0) return false;
           }
-          return (f.available_seats || 0) >= totalNonInfants;
-        });
+          const avail = getAvailableSeats(f);
+          return avail >= totalNonInfants;
+        }).map(f => ({ ...f, _legIndex: index } as any));
         allResults = [...allResults, ...legResults];
       }
       
@@ -1103,6 +1137,11 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
 
     await new Promise(resolve => setTimeout(resolve, 1500));
     
+    if (!flights || !Array.isArray(flights)) {
+      setIsSearching(false);
+      return;
+    }
+    
     let results = flights.filter(f => f.is_active);
 
     // For round-trip: find outbound flights (from→to on departure date), any trip_type is OK
@@ -1125,8 +1164,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     }
     
     if (departureDate) {
-      const depDateStr = format(departureDate, "yyyy-MM-dd");
-      results = results.filter(f => f.departure_date === depDateStr);
+      results = getFlightsForDate(results, departureDate);
     }
     
     if (flightClass !== "all") {
@@ -1135,7 +1173,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
       );
     }
     
-    results = results.filter(f => (f.available_seats || 0) >= totalNonInfants);
+    results = results.filter(f => getAvailableSeats(f) >= totalNonInfants);
     
     // For round-trip, also search for return flights separately
     if (tripType === "roundtrip" && returnDate) {
@@ -1155,7 +1193,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
       }
       
       // Match return date
-      returnResults = returnResults.filter(f => f.departure_date === retDateStr);
+      returnResults = getFlightsForDate(returnResults, returnDate);
       
       if (flightClass !== "all") {
         returnResults = returnResults.filter(f => 
@@ -1163,7 +1201,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
         );
       }
       
-      returnResults = returnResults.filter(f => (f.available_seats || 0) >= totalNonInfants);
+      returnResults = returnResults.filter(f => getAvailableSeats(f) >= totalNonInfants);
 
       // Also include linked return flights from outbound results (even if different date)
       const linkedReturnIds = new Set(returnResults.map(f => f.id));
@@ -1228,6 +1266,16 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     setToCity(search.to);
     setDepartureDate(parseISO(search.date));
     setTripType(search.tripType as any);
+    
+    // Use a small timeout to ensure state is set before triggering search
+    setTimeout(() => {
+      const searchTrigger = document.querySelector('[data-search-trigger]') as HTMLButtonElement;
+      if (searchTrigger) {
+        searchTrigger.click();
+      } else {
+        handleFlightSearch();
+      }
+    }, 150);
   };
 
   // Find the return flight for a given outbound flight
@@ -1307,7 +1355,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                       <CommandItem key={city} onSelect={() => { onChange(city); onOpenChange(false); }}>
                         {info?.flagUrl && <img src={info.flagUrl} alt="" className="w-4 h-3 rounded-[2px] object-cover shrink-0" />}
                         <span className="truncate">{city}</span>
-                        {info?.airportCode && <span className="ml-auto text-[10px] font-mono font-bold text-muted-foreground">{info.airportCode}</span>}
+                        {info?.airportCode && <span className="ml-auto text-[10px] font-sans font-medium font-bold text-muted-foreground">{info.airportCode}</span>}
                       </CommandItem>
                     );
                   })}
@@ -1319,6 +1367,183 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
       </PopoverContent>
     </Popover>
   );
+
+  const renderFlightCard = (flight: Flight, index: number, keyPrefix: string = "f") => {
+    const duration = calcDuration(flight.departure_time, flight.arrival_time);
+    const baggage = getBaggage(flight.class);
+    const effectivePrice = getEffectiveAdultPrice(flight);
+    const isCheapest = effectivePrice === cheapestPrice && searchedFlights.length > 1;
+    const isCompareSelected = compareIds.includes(flight.id);
+    const seatsLeft = getAvailableSeats(flight);
+    const isSelected = selectedOutboundFlight?.id === flight.id;
+    
+    return (
+      <Card key={`${keyPrefix}-${flight.id}`}
+        className={cn(
+          "group overflow-hidden border-border/30 hover:border-primary/40 transition-all duration-500 animate-[card-slide-up_0.4s_ease-out_forwards] opacity-0 cursor-pointer rounded-2xl",
+          "shadow-sm hover:shadow-2xl hover:shadow-primary/8 hover:-translate-y-0.5",
+          isCheapest && "ring-2 ring-[hsl(var(--success))]/20 border-[hsl(var(--success))]/30",
+          isCompareSelected && "ring-2 ring-primary/30 border-primary/40",
+          isSelected && "ring-2 ring-primary/50 border-primary/50 bg-primary/[0.02]"
+        )}
+        style={{ animationDelay: `${index * 60}ms` }}
+        onClick={() => setSelectedOutboundFlight(flight)}>
+        
+        {isCheapest && (
+          <div className="bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent px-6 py-2 border-b border-amber-400/15 flex items-center gap-2">
+            <div className="h-5 w-5 rounded-md bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-sm">
+              <Tag className="h-3 w-3 text-white" />
+            </div>
+            <span className="text-[10px] font-extrabold text-amber-700 dark:text-amber-400 tracking-[0.15em] uppercase">Best Price</span>
+            <div className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+          </div>
+        )}
+
+        <div className="p-5 sm:p-6">
+          <div className="flex items-start gap-4 sm:gap-5">
+            <div className={cn(
+              "h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all mt-5",
+              isSelected ? "border-primary bg-primary shadow-md shadow-primary/30" : "border-border/40 group-hover:border-primary/40"
+            )}>
+              {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+            </div>
+
+            <div className="shrink-0 flex flex-col items-center gap-1.5">
+              {(() => {
+                const logo = getAirlineLogo(flight.airline, flight.airline_logo);
+                return logo ? (
+                  <div className="h-14 w-14 rounded-2xl border border-border/30 p-2 bg-background shadow-sm flex items-center justify-center group-hover:shadow-md transition-shadow">
+                    <img src={logo} alt={flight.airline} className="h-full w-full object-contain" />
+                  </div>
+                ) : (
+                  <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center border border-primary/15 shadow-sm">
+                    <Plane className="h-6 w-6 text-primary" />
+                  </div>
+                );
+              })()}
+              <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight max-w-[60px] truncate">{flight.airline}</span>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <span className="text-xs text-muted-foreground font-sans font-medium bg-muted/50 px-2 py-0.5 rounded-md">{flight.flight_number || "—"}</span>
+                {flight.class && <Badge className="text-[10px] capitalize font-semibold h-5 bg-secondary text-secondary-foreground border-none">{flight.class}</Badge>}
+                {seatsLeft > 0 && seatsLeft < 5 && (
+                  <Badge className="bg-destructive/10 text-destructive text-[10px] border-destructive/20 font-bold h-5 gap-1 animate-pulse">
+                    <AlertTriangle className="h-2.5 w-2.5" /> Only {seatsLeft} left!
+                  </Badge>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="text-center min-w-[50px] sm:min-w-[70px]">
+                  <p className="text-xl sm:text-2xl font-extrabold text-foreground tracking-tighter leading-none">{formatTime(flight.departure_time)}</p>
+                  <p className="text-[10px] sm:text-xs font-bold text-primary mt-1.5 tracking-wide flex items-center justify-center gap-1">
+                    {cityInfoMap[flight.departure_city]?.flagUrl && <img src={cityInfoMap[flight.departure_city].flagUrl!} alt="" className="w-3.5 h-2.5 rounded-[1px] object-cover" />}
+                    {flight.departure_airport_code || flight.departure_city?.substring(0, 3).toUpperCase()}
+                  </p>
+                </div>
+                <div className="flex-1 flex flex-col items-center gap-1.5 px-1 sm:px-3">
+                  {duration && <p className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1 bg-muted/50 px-2.5 py-0.5 rounded-full border border-border/20"><Clock className="h-2.5 w-2.5" />{duration}</p>}
+                  <div className="flex items-center gap-0 w-full">
+                    <div className="w-2 h-2 rounded-full border-2 border-primary bg-background shrink-0" />
+                    <div className="flex-1 h-[2px] bg-gradient-to-r from-primary/60 via-primary/20 to-primary/60 relative">
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background rounded-full p-1 shadow-md border border-border/30">
+                        <Plane className="h-3.5 w-3.5 text-primary rotate-90" />
+                      </div>
+                    </div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-sm shadow-primary/30 shrink-0" />
+                  </div>
+                </div>
+                <div className="text-center min-w-[50px] sm:min-w-[70px]">
+                  <p className="text-xl sm:text-2xl font-extrabold text-foreground tracking-tighter leading-none">{formatTime(flight.arrival_time)}</p>
+                  <p className="text-[10px] sm:text-xs font-bold text-primary mt-1.5 tracking-wide flex items-center justify-center gap-1">
+                    {cityInfoMap[flight.arrival_city]?.flagUrl && <img src={cityInfoMap[flight.arrival_city].flagUrl!} alt="" className="w-3.5 h-2.5 rounded-[1px] object-cover" />}
+                    {flight.arrival_airport_code || flight.arrival_city?.substring(0, 3).toUpperCase()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 mt-4 flex-wrap">
+                <Badge variant="outline" className="text-[10px] gap-1 font-medium h-5.5 rounded-lg bg-muted/30">
+                  <Calendar className="h-2.5 w-2.5" />
+                  {flight.departure_date ? format(new Date(flight.departure_date), "dd/MM/yyyy") : "Flexible"}
+                </Badge>
+                <Badge variant="outline" className="text-[10px] gap-1 font-medium h-5.5 rounded-lg bg-muted/30"><Luggage className="h-2.5 w-2.5" />{baggage}</Badge>
+                <Badge variant="outline" className={cn("text-[10px] gap-1 font-medium h-5.5 rounded-lg", seatsLeft < 10 ? "border-amber-400/50 text-amber-600 bg-amber-50/50" : "bg-muted/30")}>
+                  <Users className="h-2.5 w-2.5" />{seatsLeft} seats
+                </Badge>
+              </div>
+            </div>
+
+            <div className="shrink-0 text-right pl-3 sm:pl-5 border-l border-border/20 min-w-[100px] sm:min-w-[140px] flex flex-col items-end">
+              <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-2xl px-3 sm:px-5 py-3 sm:py-4 border border-primary/15 shadow-sm">
+                <p className="text-2xl sm:text-3xl font-bold text-primary leading-none tracking-tight">${effectivePrice}</p>
+                <p className="text-[10px] text-muted-foreground mt-1.5 font-medium tracking-wide">per person</p>
+              </div>
+              
+              <div className="flex items-center gap-1.5 mt-2">
+                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-muted-foreground hover:text-primary" onClick={(e) => { e.stopPropagation(); copyFlightDetails(flight); }}>
+                  <Share2 className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant={isCompareSelected ? "default" : "ghost"} size="icon" className={cn("h-7 w-7 rounded-lg", isCompareSelected ? "bg-primary/15 text-primary" : "text-muted-foreground")} onClick={(e) => { e.stopPropagation(); toggleCompare(flight.id); }}>
+                  <GitCompareArrows className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+
+              <Button size="sm" className={cn("mt-2.5 rounded-xl w-full gap-1.5 font-bold text-xs h-9 transition-all", isSelected ? "bg-primary/90" : "shadow-md hover:scale-[1.02]")} onClick={(e) => { e.stopPropagation(); setSelectedOutboundFlight(flight); }}>
+                {isSelected ? "Selected ✓" : "Select"} {!isSelected && <ArrowRight className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-border/15 bg-muted/20">
+          <button className="w-full flex items-center justify-center gap-2 py-2.5 text-xs text-primary hover:bg-primary/5 transition-all font-bold tracking-[0.1em] uppercase" onClick={(e) => { e.stopPropagation(); setExpandedFlightId(expandedFlightId === flight.id ? null : flight.id); }}>
+            {expandedFlightId === flight.id ? <>Hide details <ChevronUp className="h-3.5 w-3.5" /></> : <>Flight details <ChevronDown className="h-3.5 w-3.5" /></>}
+          </button>
+        </div>
+
+        {expandedFlightId === flight.id && (
+          <div className="border-t border-border/15 bg-gradient-to-b from-muted/40 via-muted/20 to-transparent px-6 py-5 space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-sm" />
+                <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-primary">Flight Information</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-primary/10">
+                <Plane className="h-4 w-4 text-primary" />
+              </div>
+              <span className="text-xs font-semibold text-foreground">{flight.airline}</span>
+              <span className="text-[11px] font-sans font-medium text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md border border-border/30">{flight.flight_number || "TBD"}</span>
+            </div>
+            <div className="flex items-start gap-4 pl-1">
+              <div className="flex flex-col items-center pt-1">
+                <div className="w-3.5 h-3.5 rounded-full border-[2.5px] border-primary bg-background shadow-sm" />
+                <div className="w-[2px] flex-1 min-h-[40px] bg-primary/20 rounded-full" />
+                <div className="w-3.5 h-3.5 rounded-full border-[2.5px] border-primary bg-primary shadow-sm" />
+              </div>
+              <div className="flex-1 space-y-4">
+                <div className="flex items-baseline gap-3">
+                  <p className="text-base font-extrabold text-foreground tracking-tight">{formatTime(flight.departure_time)}</p>
+                  <p className="text-sm text-muted-foreground font-medium">{flight.departure_airport_code || flight.departure_city?.substring(0,3).toUpperCase()} <span className="ml-1.5 text-foreground/70">{flight.departure_city}</span></p>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <p className="text-base font-extrabold text-foreground tracking-tight">{formatTime(flight.arrival_time)}</p>
+                  <p className="text-sm text-muted-foreground font-medium">{flight.arrival_airport_code || flight.arrival_city?.substring(0,3).toUpperCase()} <span className="ml-1.5 text-foreground/70">{flight.arrival_city}</span></p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 pt-3 border-t border-border/15 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1.5 bg-muted/40 px-2.5 py-1 rounded-md"><Clock className="h-3 w-3" /> All times are local</span>
+            </div>
+          </div>
+        )}
+      </Card>
+    );
+  };
 
   // Check if any filter is active
   const hasActiveFilters = airlineFilter.length > 0 || stopsFilter.length > 0 || timeFilter.length > 0 || classFilter.length > 0 || priceRange[0] > resultPriceRange[0] || priceRange[1] < resultPriceRange[1];
@@ -1349,7 +1574,15 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
               <Plane className="h-2.5 w-2.5" />
               {search.from} → {search.to}
               <span className="text-muted-foreground/60">•</span>
-              {format(new Date(search.date), "dd/MM/yyyy")}
+              {search.date ? (
+                (() => {
+                  try {
+                    return format(new Date(search.date), "dd/MM/yyyy");
+                  } catch (e) {
+                    return "Invalid date";
+                  }
+                })()
+              ) : "No date"}
             </button>
           ))}
           <button
@@ -1503,7 +1736,10 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                       <PopoverContent className="w-auto p-0" align="start">
                         <AvailabilityCalendar mode="single" selected={leg.date}
                           onSelect={(d) => { updateLeg(index, "date", d); setMultiCityOpenStates(prev => ({ ...prev, [`date-${index}`]: false })); }}
-                          disabled={(date) => { if (date < new Date()) return true; if (index > 0 && multiCityLegs[index - 1].date) return date <= multiCityLegs[index - 1].date!; return false; }}
+                          disabled={(date) => { if (startOfDay(date) < startOfDay(new Date())) return true; if (index > 0 && multiCityLegs[index - 1].date) return startOfDay(date) <= startOfDay(multiCityLegs[index - 1].date!); return false; }}
+                          availableDates={getLegAvailability(leg.from, leg.to).available}
+                          limitedDates={getLegAvailability(leg.from, leg.to).limited}
+                          soldOutDates={getLegAvailability(leg.from, leg.to).soldOut}
                           initialFocus showLegend={false} />
                       </PopoverContent>
                     </Popover>
@@ -1585,7 +1821,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                             <span className="text-sm text-muted-foreground">Select departure</span>
                           )}
                         </div>
-                        {fromCity && cityInfoMap[fromCity]?.airportCode && <span className="text-[10px] font-mono font-bold text-muted-foreground shrink-0">({cityInfoMap[fromCity].airportCode})</span>}
+                        {fromCity && cityInfoMap[fromCity]?.airportCode && <span className="text-[10px] font-sans font-medium font-bold text-muted-foreground shrink-0">({cityInfoMap[fromCity].airportCode})</span>}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[250px] p-0" align="start">
@@ -1615,7 +1851,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                     }}>
                                       {info?.flagUrl ? <img src={info.flagUrl} alt="" className="w-4 h-3 rounded-[2px] object-cover shrink-0 mr-2" /> : <PlaneTakeoff className="h-3.5 w-3.5 mr-2 text-muted-foreground" />}
                                       <span className="truncate">{city}</span>
-                                      {info?.airportCode && <span className="ml-auto text-[10px] font-mono font-bold text-muted-foreground">{info.airportCode}</span>}
+                                      {info?.airportCode && <span className="ml-auto text-[10px] font-sans font-medium font-bold text-muted-foreground">{info.airportCode}</span>}
                                     </CommandItem>
                                   );
                                 })}
@@ -1669,7 +1905,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                             <span className="text-sm text-muted-foreground">Select destination</span>
                           )}
                         </div>
-                        {toCity && cityInfoMap[toCity]?.airportCode && <span className="text-[10px] font-mono font-bold text-muted-foreground shrink-0">({cityInfoMap[toCity].airportCode})</span>}
+                        {toCity && cityInfoMap[toCity]?.airportCode && <span className="text-[10px] font-sans font-medium font-bold text-muted-foreground shrink-0">({cityInfoMap[toCity].airportCode})</span>}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[250px] p-0" align="start">
@@ -1692,7 +1928,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                     <CommandItem key={city} onSelect={() => { setToCity(city); setToOpen(false); }}>
                                       {info?.flagUrl ? <img src={info.flagUrl} alt="" className="w-4 h-3 rounded-[2px] object-cover shrink-0 mr-2" /> : <PlaneLanding className="h-3.5 w-3.5 mr-2 text-muted-foreground" />}
                                       <span className="truncate">{city}</span>
-                                      {info?.airportCode && <span className="ml-auto text-[10px] font-mono font-bold text-muted-foreground">{info.airportCode}</span>}
+                                      {info?.airportCode && <span className="ml-auto text-[10px] font-sans font-medium font-bold text-muted-foreground">{info.airportCode}</span>}
                                     </CommandItem>
                                   );
                                 })}
@@ -1750,7 +1986,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                             setTimeout(() => setReturnDateOpen(true), 120);
                           }
                         }}
-                        disabled={(date) => date < new Date()}
+                        disabled={(date) => startOfDay(date) < startOfDay(new Date())}
                         availableDates={departureAvailability.available} limitedDates={departureAvailability.limited}
                         soldOutDates={departureAvailability.soldOut} datePrices={departurePrices} />
                     </PopoverContent>
@@ -1785,7 +2021,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                       <PopoverContent className="w-auto p-0" align="start">
                         <InlineFareCalendar selected={returnDate}
                           onSelect={(d) => { setReturnDate(d); setReturnDateOpen(false); }}
-                          disabled={(date) => departureDate ? date <= departureDate : date < new Date()}
+                          disabled={(date) => departureDate ? startOfDay(date) <= startOfDay(departureDate) : startOfDay(date) < startOfDay(new Date())}
                           availableDates={returnAvailability.available} limitedDates={returnAvailability.limited}
                           soldOutDates={returnAvailability.soldOut} datePrices={returnPrices}
                           addOnPrice={selectedDeparturePrice}
@@ -2389,15 +2625,67 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
             {/* Flight Cards */}
             <div className="flex-1 min-w-0">
               {filteredResults.length === 0 && returnSearchedFlights.length === 0 ? (
-                <Card className="border-border/40">
-                  <div className="text-center py-16">
-                    <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
-                      <Plane className="h-8 w-8 text-muted-foreground/40" />
+                <Card className="border-border/40 overflow-hidden bg-card/50 backdrop-blur-sm">
+                  <div className="text-center py-16 px-6">
+                    <div className="h-20 w-20 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-6 relative">
+                      <Plane className="h-10 w-10 text-muted-foreground/40 -rotate-45" />
+                      <div className="absolute inset-0 border-2 border-dashed border-muted-foreground/20 rounded-2xl animate-[spin_10s_linear_infinite]" />
                     </div>
-                    <p className="font-semibold text-foreground/70">No flights match your criteria</p>
-                    <p className="text-sm text-muted-foreground mt-1">Try adjusting filters or search parameters</p>
+                    <h3 className="text-lg font-bold text-foreground">No flights match your search</h3>
+                    <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">
+                      We couldn't find any flights for {fromCity} to {toCity} on this specific date.
+                    </p>
+                    
+                    <div className="mt-8 space-y-4">
+                      <p className="text-xs font-bold text-primary uppercase tracking-widest">Try these alternatives:</p>
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <Button variant="outline" size="sm" className="rounded-xl gap-2"
+                          onClick={() => {
+                            // Suggest +1 day
+                            if (departureDate) {
+                              const nextDay = addDays(departureDate, 1);
+                              setDepartureDate(nextDay);
+                              setTimeout(handleFlightSearch, 100);
+                            }
+                          }}>
+                          <ArrowRight className="h-3.5 w-3.5" /> Next Day
+                        </Button>
+                        <Button variant="outline" size="sm" className="rounded-xl gap-2"
+                          onClick={() => setDepartureDateOpen(true)}>
+                          <Calendar className="h-3.5 w-3.5" /> Open Calendar
+                        </Button>
+                        <Button variant="ghost" size="sm" className="rounded-xl"
+                          onClick={() => { setAirlineFilter([]); setClassFilter([]); setPriceRange(resultPriceRange); }}>
+                          Clear Filters
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </Card>
+              ) : tripType === "multicity" ? (
+                <div className="space-y-8">
+                  {multiCityLegs.map((leg, legIdx) => {
+                    const legFlights = filteredResults.filter((f: any) => f._legIndex === legIdx);
+                    if (legFlights.length === 0) return null;
+                    
+                    return (
+                      <div key={legIdx} className="space-y-4">
+                        <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 rounded-xl border border-primary/10">
+                          <div className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
+                            {legIdx + 1}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-foreground">{leg.from} → {leg.to}</p>
+                            <p className="text-[10px] text-muted-foreground">{leg.date ? format(leg.date, "dd MMM yyyy") : "Flexible"}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          {legFlights.map((flight, index) => renderFlightCard(flight, index, `leg-${legIdx}`))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : tripType === "roundtrip" ? (
                 /* ========== ROUND-TRIP: Paired cards first, optional custom selection ========== */
                 <div className="space-y-6">
@@ -2641,12 +2929,12 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                     )}
                                   </span>
                                   {pair.outbound.flight_number && (
-                                    <span className="inline-flex items-center rounded-md bg-muted/60 border border-border/40 px-1.5 py-px text-[9px] font-mono font-semibold text-foreground/70">
+                                    <span className="inline-flex items-center rounded-md bg-muted/60 border border-border/40 px-1.5 py-px text-[9px] font-sans font-medium font-semibold text-foreground/70">
                                       {pair.outbound.flight_number}
                                     </span>
                                   )}
                                   {pair.return?.flight_number && pair.return.flight_number !== pair.outbound.flight_number && (
-                                    <span className="inline-flex items-center rounded-md bg-muted/60 border border-border/40 px-1.5 py-px text-[9px] font-mono font-semibold text-foreground/70">
+                                    <span className="inline-flex items-center rounded-md bg-muted/60 border border-border/40 px-1.5 py-px text-[9px] font-sans font-medium font-semibold text-foreground/70">
                                       {pair.return.flight_number}
                                     </span>
                                   )}
@@ -2660,7 +2948,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                 <div className="flex items-center gap-4 shrink-0">
                                   <div className="text-right">
                                     <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold">Round Trip</p>
-                                    <p className="text-2xl font-black text-primary leading-none tabular-nums price-glow">${combinedPrice}</p>
+                                    <p className="text-2xl font-bold text-primary leading-none tabular-nums price-glow">${combinedPrice}</p>
                                     {totalPassengers > 1 ? (
                                       <p className="text-[9px] text-muted-foreground mt-0.5">
                                         × {totalPassengers} pax = <span className="font-bold text-foreground/80 tabular-nums">${totalForAllPax}</span>
@@ -2771,7 +3059,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
 
                                     <div className="flex items-center gap-2 flex-1 min-w-0">
                                       <div className="text-center min-w-[52px]">
-                                        <p className="text-xl font-black text-foreground leading-none tabular-nums tracking-tight">{formatTime(flight.departure_time)}</p>
+                                        <p className="text-xl font-bold text-foreground leading-none tabular-nums tracking-tight">{formatTime(flight.departure_time)}</p>
                                         <p className="text-[10px] font-bold text-primary mt-1 flex items-center justify-center gap-0.5 [text-decoration:underline_dotted] underline-offset-2 decoration-primary/40">
                                           {cityInfoMap[flight.departure_city]?.flagUrl && <img src={cityInfoMap[flight.departure_city].flagUrl!} alt="" className="w-3 h-2 rounded-[1px] object-cover" />}
                                           {flight.departure_airport_code || flight.departure_city?.substring(0, 3).toUpperCase()}
@@ -2791,7 +3079,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                         <Badge variant="outline" className="text-[8px] h-3.5 px-1.5 font-bold border-primary/20 text-primary/80 bg-primary/5">Direct</Badge>
                                       </div>
                                       <div className="text-center min-w-[52px]">
-                                        <p className="text-xl font-black text-foreground leading-none tabular-nums tracking-tight">{formatTime(flight.arrival_time)}</p>
+                                        <p className="text-xl font-bold text-foreground leading-none tabular-nums tracking-tight">{formatTime(flight.arrival_time)}</p>
                                         <p className="text-[10px] font-bold text-primary mt-1 flex items-center justify-center gap-0.5 [text-decoration:underline_dotted] underline-offset-2 decoration-primary/40">
                                           {cityInfoMap[flight.arrival_city]?.flagUrl && <img src={cityInfoMap[flight.arrival_city].flagUrl!} alt="" className="w-3 h-2 rounded-[1px] object-cover" />}
                                           {flight.arrival_airport_code || flight.arrival_city?.substring(0, 3).toUpperCase()}
@@ -2803,7 +3091,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                   <div className="flex items-center gap-2 mt-3 ml-[84px] text-[10px] text-muted-foreground">
                                     <span className="font-semibold">{flight.airline}</span>
                                     {flight.flight_number && (
-                                      <span className="font-mono px-1.5 py-0.5 rounded bg-muted/60 text-foreground/80 text-[9px] font-bold tracking-wider">{flight.flight_number}</span>
+                                      <span className="font-sans font-medium px-1.5 py-0.5 rounded bg-muted/60 text-foreground/80 text-[9px] font-bold tracking-wider">{flight.flight_number}</span>
                                     )}
                                     {flight.class && <span>• {flight.class}</span>}
                                     {seatsLeft > 0 && seatsLeft <= 10 && (
@@ -2814,7 +3102,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
 
                                 <div className="shrink-0 sm:border-l border-t sm:border-t-0 border-border/30 p-4 flex items-center justify-end sm:min-w-[130px] bg-gradient-to-br from-primary/8 via-primary/3 to-transparent">
                                   <div className="text-right">
-                                    <p className="text-2xl font-black text-primary leading-none tabular-nums animate-price-glow">${effectivePrice}</p>
+                                    <p className="text-2xl font-bold text-primary leading-none tabular-nums animate-price-glow">${effectivePrice}</p>
                                     <p className="text-[9px] text-muted-foreground mt-1 font-medium">per person</p>
                                   </div>
                                 </div>
@@ -2924,7 +3212,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
 
                                         <div className="flex items-center gap-2 flex-1 min-w-0">
                                           <div className="text-center min-w-[52px]">
-                                            <p className="text-xl font-black text-foreground leading-none tabular-nums tracking-tight">{formatTime(flight.departure_time)}</p>
+                                            <p className="text-xl font-bold text-foreground leading-none tabular-nums tracking-tight">{formatTime(flight.departure_time)}</p>
                                             <p className="text-[10px] font-bold text-primary mt-1 flex items-center justify-center gap-0.5 [text-decoration:underline_dotted] underline-offset-2 decoration-primary/40">
                                               {cityInfoMap[flight.departure_city]?.flagUrl && <img src={cityInfoMap[flight.departure_city].flagUrl!} alt="" className="w-3 h-2 rounded-[1px] object-cover" />}
                                               {flight.departure_airport_code || flight.departure_city?.substring(0, 3).toUpperCase()}
@@ -2944,7 +3232,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                             <Badge variant="outline" className="text-[8px] h-3.5 px-1.5 font-bold border-primary/20 text-primary/80 bg-primary/5">Direct</Badge>
                                           </div>
                                           <div className="text-center min-w-[52px]">
-                                            <p className="text-xl font-black text-foreground leading-none tabular-nums tracking-tight">{formatTime(flight.arrival_time)}</p>
+                                            <p className="text-xl font-bold text-foreground leading-none tabular-nums tracking-tight">{formatTime(flight.arrival_time)}</p>
                                             <p className="text-[10px] font-bold text-primary mt-1 flex items-center justify-center gap-0.5 [text-decoration:underline_dotted] underline-offset-2 decoration-primary/40">
                                               {cityInfoMap[flight.arrival_city]?.flagUrl && <img src={cityInfoMap[flight.arrival_city].flagUrl!} alt="" className="w-3 h-2 rounded-[1px] object-cover" />}
                                               {flight.arrival_airport_code || flight.arrival_city?.substring(0, 3).toUpperCase()}
@@ -2956,7 +3244,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                       <div className="flex items-center gap-2 mt-3 ml-[84px] text-[10px] text-muted-foreground">
                                         <span className="font-semibold">{flight.airline}</span>
                                         {flight.flight_number && (
-                                          <span className="font-mono px-1.5 py-0.5 rounded bg-muted/60 text-foreground/80 text-[9px] font-bold tracking-wider">{flight.flight_number}</span>
+                                          <span className="font-sans font-medium px-1.5 py-0.5 rounded bg-muted/60 text-foreground/80 text-[9px] font-bold tracking-wider">{flight.flight_number}</span>
                                         )}
                                         {flight.class && <span>• {flight.class}</span>}
                                         {seatsLeft > 0 && seatsLeft <= 10 && (
@@ -2967,7 +3255,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
 
                                     <div className="shrink-0 sm:border-l border-t sm:border-t-0 border-border/30 p-4 flex items-center justify-end sm:min-w-[130px] bg-gradient-to-br from-primary/8 via-primary/3 to-transparent">
                                       <div className="text-right">
-                                        <p className="text-2xl font-black text-primary leading-none tabular-nums animate-price-glow">${effectivePrice}</p>
+                                        <p className="text-2xl font-bold text-primary leading-none tabular-nums animate-price-glow">${effectivePrice}</p>
                                         <p className="text-[9px] text-muted-foreground mt-1 font-medium">per person</p>
                                       </div>
                                     </div>
@@ -2999,7 +3287,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                         {selectedOutboundFlight && selectedReturnFlight && (
                           <div className="relative flex items-center gap-2">
                             <span className="text-xs text-primary-foreground/80 font-medium">Total</span>
-                            <span className="text-lg font-black text-primary-foreground tabular-nums">${selectionTotal}</span>
+                            <span className="text-lg font-bold text-primary-foreground tabular-nums">${selectionTotal}</span>
                           </div>
                         )}
                       </div>
@@ -3097,7 +3385,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                   </div>
                                   <div className="text-right">
                                     <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Total</p>
-                                    <p className="text-3xl font-black text-primary tracking-tight tabular-nums animate-price-glow">${selectionTotal}</p>
+                                    <p className="text-3xl font-bold text-primary tracking-tight tabular-nums animate-price-glow">${selectionTotal}</p>
                                   </div>
                                 </div>
                               </div>
@@ -3116,342 +3404,8 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
               ) : (
                 /* ========== ONE-WAY / MULTI-CITY: Card layout with selection & breakdown ========== */
                 <div className="space-y-4">
-                  {filteredResults.map((flight, index) => {
-                    const duration = calcDuration(flight.departure_time, flight.arrival_time);
-                    const baggage = getBaggage(flight.class);
-                    const effectivePrice = getEffectiveAdultPrice(flight);
-                    const isCheapest = effectivePrice === cheapestPrice && searchedFlights.length > 1;
-                    const totalPrice = effectivePrice * totalPassengers;
-                    const isCompareSelected = compareIds.includes(flight.id);
-                    const seatsLeft = flight.available_seats || 0;
-                    const isSelected = selectedOutboundFlight?.id === flight.id;
-                    
-                    return (
-                      <Card key={flight.id}
-                        className={cn(
-                          "group overflow-hidden border-border/30 hover:border-primary/40 transition-all duration-500 animate-[card-slide-up_0.4s_ease-out_forwards] opacity-0 cursor-pointer rounded-2xl",
-                          "shadow-sm hover:shadow-2xl hover:shadow-primary/8 hover:-translate-y-0.5",
-                          isCheapest && "ring-2 ring-[hsl(var(--success))]/20 border-[hsl(var(--success))]/30",
-                          isCompareSelected && "ring-2 ring-primary/30 border-primary/40",
-                          isSelected && "ring-2 ring-primary/50 border-primary/50 bg-primary/[0.02]"
-                        )}
-                        style={{ animationDelay: `${index * 60}ms` }}
-                        onClick={() => setSelectedOutboundFlight(flight)}>
-                        
-                        {isCheapest && (
-                          <div className="bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-transparent px-6 py-2 border-b border-amber-400/15 flex items-center gap-2">
-                            <div className="h-5 w-5 rounded-md bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-sm">
-                              <Tag className="h-3 w-3 text-white" />
-                            </div>
-                            <span className="text-[10px] font-extrabold text-amber-700 dark:text-amber-400 tracking-[0.15em] uppercase">Best Price</span>
-                            <div className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                          </div>
-                        )}
-
-                        <div className="p-5 sm:p-6">
-                          <div className="flex items-start gap-4 sm:gap-5">
-                            {/* Selection indicator */}
-                            <div className={cn(
-                              "h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all mt-5",
-                              isSelected ? "border-primary bg-primary shadow-md shadow-primary/30" : "border-border/40 group-hover:border-primary/40"
-                            )}>
-                              {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-                            </div>
-
-                            {/* Airline Logo */}
-                            <div className="shrink-0 flex flex-col items-center gap-1.5">
-                              {(() => {
-                                const logo = getAirlineLogo(flight.airline, flight.airline_logo);
-                                return logo ? (
-                                  <div className="h-14 w-14 rounded-2xl border border-border/30 p-2 bg-background shadow-sm flex items-center justify-center group-hover:shadow-md transition-shadow">
-                                    <img src={logo} alt={flight.airline} className="h-full w-full object-contain" />
-                                  </div>
-                                ) : (
-                                  <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center border border-primary/15 shadow-sm">
-                                    <Plane className="h-6 w-6 text-primary" />
-                                  </div>
-                                );
-                              })()}
-                              <span className="text-[9px] font-semibold text-muted-foreground text-center leading-tight max-w-[60px] truncate">{flight.airline}</span>
-                            </div>
-
-                            {/* Route Details */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-4 flex-wrap">
-                                <span className="text-xs text-muted-foreground font-mono bg-muted/50 px-2 py-0.5 rounded-md">{flight.flight_number || "—"}</span>
-                                {flight.class && (
-                                  <Badge className="text-[10px] capitalize font-semibold h-5 bg-secondary text-secondary-foreground border-none">
-                                    {flight.class}
-                                  </Badge>
-                                )}
-                                {seatsLeft > 0 && seatsLeft < 5 && (
-                                  <Badge className="bg-destructive/10 text-destructive text-[10px] border-destructive/20 font-bold h-5 gap-1 animate-pulse">
-                                    <AlertTriangle className="h-2.5 w-2.5" /> Only {seatsLeft} left!
-                                  </Badge>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-3">
-                                <div className="text-center min-w-[50px] sm:min-w-[70px]">
-                                  <p className="text-xl sm:text-2xl font-extrabold text-foreground tracking-tighter leading-none">{formatTime(flight.departure_time)}</p>
-                                  <p className="text-[10px] sm:text-xs font-bold text-primary mt-1.5 tracking-wide flex items-center justify-center gap-1">
-                                    {cityInfoMap[flight.departure_city]?.flagUrl && <img src={cityInfoMap[flight.departure_city].flagUrl!} alt="" className="w-3.5 h-2.5 rounded-[1px] object-cover" />}
-                                    {flight.departure_airport_code || flight.departure_city?.substring(0, 3).toUpperCase()}
-                                  </p>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5 hidden sm:block">{flight.departure_city}</p>
-                                </div>
-                                <div className="flex-1 flex flex-col items-center gap-1.5 px-1 sm:px-3">
-                                  {duration && (
-                                    <p className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1 bg-muted/50 px-2.5 py-0.5 rounded-full border border-border/20">
-                                      <Clock className="h-2.5 w-2.5" />{duration}
-                                    </p>
-                                  )}
-                                  <div className="flex items-center gap-0 w-full">
-                                    <div className="w-2 h-2 rounded-full border-2 border-primary bg-background shrink-0" />
-                                    <div className="flex-1 h-[2px] bg-gradient-to-r from-primary/60 via-primary/20 to-primary/60 relative">
-                                      <div className="absolute inset-0 bg-gradient-to-r from-primary/40 via-primary to-primary/40 animate-pulse opacity-30" />
-                                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-background rounded-full p-1 shadow-md border border-border/30">
-                                        <Plane className="h-3.5 w-3.5 text-primary" style={{ transform: "rotate(90deg)" }} />
-                                      </div>
-                                    </div>
-                                    <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-sm shadow-primary/30 shrink-0" />
-                                  </div>
-                                  <p className="text-[9px] text-muted-foreground font-medium tracking-wide">Direct</p>
-                                </div>
-                                <div className="text-center min-w-[50px] sm:min-w-[70px]">
-                                  <p className="text-xl sm:text-2xl font-extrabold text-foreground tracking-tighter leading-none">{formatTime(flight.arrival_time)}</p>
-                                  <p className="text-[10px] sm:text-xs font-bold text-primary mt-1.5 tracking-wide flex items-center justify-center gap-1">
-                                    {cityInfoMap[flight.arrival_city]?.flagUrl && <img src={cityInfoMap[flight.arrival_city].flagUrl!} alt="" className="w-3.5 h-2.5 rounded-[1px] object-cover" />}
-                                    {flight.arrival_airport_code || flight.arrival_city?.substring(0, 3).toUpperCase()}
-                                  </p>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5 hidden sm:block">{flight.arrival_city}</p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2 mt-4 flex-wrap">
-                                <Badge variant="outline" className="text-[10px] gap-1 font-medium h-5.5 rounded-lg bg-muted/30">
-                                  <Calendar className="h-2.5 w-2.5" />
-                                  {flight.departure_date ? format(new Date(flight.departure_date), "dd/MM/yyyy") : "Flexible"}
-                                </Badge>
-                                <Badge variant="outline" className="text-[10px] gap-1 font-medium h-5.5 rounded-lg bg-muted/30">
-                                  <Luggage className="h-2.5 w-2.5" />{baggage}
-                                </Badge>
-                                <Badge variant="outline" className={cn(
-                                  "text-[10px] gap-1 font-medium h-5.5 rounded-lg",
-                                  seatsLeft < 5 ? "border-destructive/50 text-destructive bg-destructive/5" :
-                                  seatsLeft < 10 ? "border-amber-400/50 text-amber-600 bg-amber-50/50" : "bg-muted/30"
-                                )}>
-                                  <Users className="h-2.5 w-2.5" />{seatsLeft} seats
-                                </Badge>
-                              </div>
-                            </div>
-
-                            {/* Price Column + Actions */}
-                            <div className="shrink-0 text-right pl-3 sm:pl-5 border-l border-border/20 min-w-[100px] sm:min-w-[140px] flex flex-col items-end">
-                              <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-2xl px-3 sm:px-5 py-3 sm:py-4 border border-primary/15 shadow-sm">
-                                <p className="text-2xl sm:text-3xl font-black text-primary leading-none tracking-tight">${getEffectiveAdultPrice(flight)}</p>
-                                <p className="text-[10px] text-muted-foreground mt-1.5 font-medium tracking-wide">per person</p>
-                                {(() => {
-                                  const nextTier = getNextTierInfo(flight);
-                                  if (nextTier) {
-                                    return (
-                                      <div className="mt-2 space-y-0.5 text-[9px] border-t border-primary/10 pt-1.5">
-                                        <div className="text-muted-foreground">
-                                          <span className="text-amber-600 dark:text-amber-400 font-bold">{nextTier.seatsLeftInTier}</span> seats at this price
-                                        </div>
-                                        <div className="text-muted-foreground">
-                                          Next: <span className="font-bold text-foreground">${nextTier.nextPrice}</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                  return null;
-                                })()}
-                              </div>
-                              
-                              <div className="flex items-center gap-1.5 mt-2">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-muted-foreground hover:text-primary"
-                                      onClick={(e) => { e.stopPropagation(); copyFlightDetails(flight); }}>
-                                      <Share2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="text-[10px]">Copy details</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button variant={isCompareSelected ? "default" : "ghost"} size="icon" 
-                                      className={cn("h-7 w-7 rounded-lg", isCompareSelected ? "bg-primary/15 text-primary hover:bg-primary/20" : "text-muted-foreground hover:text-primary")}
-                                      onClick={(e) => { e.stopPropagation(); toggleCompare(flight.id); }}>
-                                      <GitCompareArrows className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="text-[10px]">{isCompareSelected ? "Remove from compare" : "Compare"}</TooltipContent>
-                                </Tooltip>
-                              </div>
-
-                              <Button size="sm" className={cn(
-                                "mt-2.5 rounded-xl w-full gap-1.5 font-bold text-xs h-9 transition-all duration-300",
-                                isSelected 
-                                  ? "bg-primary/90 shadow-lg shadow-primary/20" 
-                                  : "shadow-md shadow-primary/15 hover:shadow-lg hover:shadow-primary/25 hover:scale-[1.02]"
-                              )}
-                                onClick={(e) => { e.stopPropagation(); setSelectedOutboundFlight(flight); }}>
-                                {isSelected ? "Selected ✓" : "Select"} {!isSelected && <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Expand/Collapse Toggle */}
-                        <div className="border-t border-border/15 bg-muted/20">
-                          <button
-                            className="w-full flex items-center justify-center gap-2 py-2.5 text-xs text-primary hover:bg-primary/5 transition-all font-bold tracking-[0.1em] uppercase"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setExpandedFlightId(expandedFlightId === flight.id ? null : flight.id);
-                            }}
-                          >
-                            {expandedFlightId === flight.id ? (
-                              <>Hide details <ChevronUp className="h-3.5 w-3.5" /></>
-                            ) : (
-                              <>Flight details <ChevronDown className="h-3.5 w-3.5" /></>
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Expanded Flight Details - Pro Google Flights Style */}
-                        {expandedFlightId === flight.id && (() => {
-                          const returnFl = getLinkedReturnFlight(flight);
-                          const returnDuration = returnFl ? calcDuration(returnFl.departure_time, returnFl.arrival_time) : null;
-                          const returnBaggage = returnFl ? getBaggage(returnFl.class) : null;
-
-                          const FlightLegDetail = ({ fl, legLabel, legDuration, legBaggage, colorScheme }: { fl: typeof flight; legLabel: string; legDuration: string | null; legBaggage: string; colorScheme: "primary" | "emerald" }) => {
-                            const isPrimary = colorScheme === "primary";
-                            const accentText = isPrimary ? "text-primary" : "text-emerald-600 dark:text-emerald-400";
-                            const accentBg = isPrimary ? "bg-primary/10" : "bg-emerald-500/10";
-                            const accentBorder = isPrimary ? "border-primary/20" : "border-emerald-500/20";
-                            const accentDot = isPrimary ? "border-primary" : "border-emerald-500";
-                            const accentDotFill = isPrimary ? "bg-primary" : "bg-emerald-500";
-                            const accentLine = isPrimary ? "bg-primary/20" : "bg-emerald-500/20";
-                            const flLogo = getAirlineLogo(fl.airline, fl.airline_logo);
-
-                            return (
-                              <div className="space-y-4">
-                                {/* Leg header */}
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2.5">
-                                    <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm", accentDotFill)} style={{ boxShadow: `0 0 8px ${isPrimary ? 'hsl(var(--primary) / 0.4)' : 'rgb(16 185 129 / 0.4)'}` }} />
-                                    <span className={cn("text-[11px] font-extrabold uppercase tracking-[0.2em]", accentText)}>{legLabel}</span>
-                                    <span className="text-[11px] text-muted-foreground font-medium">
-                                      · {fl.departure_date ? format(new Date(fl.departure_date), "EEE, dd MMM yyyy") : ""}
-                                    </span>
-                                  </div>
-                                  {legDuration && (
-                                    <span className={cn("text-[11px] font-bold px-3 py-1 rounded-lg border", accentBg, accentBorder, accentText)}>{legDuration}</span>
-                                  )}
-                                </div>
-
-                                {/* Airline + flight number */}
-                                <div className="flex items-center gap-3">
-                                  {flLogo ? (
-                                    <img src={flLogo} alt={fl.airline} className="h-8 max-w-[90px] object-contain" />
-                                  ) : (
-                                    <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center", accentBg)}>
-                                      <Plane className={cn("h-4 w-4", accentText)} />
-                                    </div>
-                                  )}
-                                  <span className="text-xs font-semibold text-foreground">{fl.airline}</span>
-                                  <span className="text-[11px] font-mono text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md border border-border/30">{fl.flight_number || "TBD"}</span>
-                                  {fl.class && (
-                                    <Badge className={cn("text-[10px] capitalize font-semibold h-5 border-none", accentBg, accentText)}>
-                                      {fl.class}
-                                    </Badge>
-                                  )}
-                                </div>
-
-                                {/* Timeline */}
-                                <div className="flex items-start gap-4 pl-1">
-                                  {/* Vertical timeline dots + line */}
-                                  <div className="flex flex-col items-center pt-1">
-                                    <div className={cn("w-3.5 h-3.5 rounded-full border-[2.5px] bg-background shadow-sm", accentDot)} />
-                                    <div className={cn("w-[2px] flex-1 min-h-[60px] rounded-full", accentLine)} />
-                                    <div className={cn("w-3.5 h-3.5 rounded-full border-[2.5px] shadow-sm", accentDot, accentDotFill)} />
-                                  </div>
-                                  {/* Departure + Arrival info */}
-                                  <div className="flex-1 space-y-1">
-                                    <div className="flex items-baseline gap-3">
-                                      <p className="text-base font-extrabold text-foreground tracking-tight">{formatTime(fl.departure_time)}</p>
-                                      <p className="text-sm text-muted-foreground font-medium">
-                                        {fl.departure_airport_code || fl.departure_city?.substring(0, 3).toUpperCase()}
-                                        <span className="ml-1.5 text-foreground/70">{fl.departure_city}</span>
-                                      </p>
-                                    </div>
-                                    {/* Mid info: duration, baggage, etc. */}
-                                    <div className="flex items-center gap-3 py-3 ml-0">
-                                      <div className={cn("flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border", accentBg, accentBorder, accentText)}>
-                                        {isPrimary ? <PlaneTakeoff className="h-3 w-3" /> : <PlaneLanding className="h-3 w-3" />}
-                                        {legDuration || "—"}
-                                      </div>
-                                      <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Luggage className="h-3 w-3" />{legBaggage}</span>
-                                    </div>
-                                    <div className="flex items-baseline gap-3">
-                                      <p className="text-base font-extrabold text-foreground tracking-tight">{formatTime(fl.arrival_time)}</p>
-                                      <p className="text-sm text-muted-foreground font-medium">
-                                        {fl.arrival_airport_code || fl.arrival_city?.substring(0, 3).toUpperCase()}
-                                        <span className="ml-1.5 text-foreground/70">{fl.arrival_city}</span>
-                                      </p>
-                                    </div>
-                                    {fl.arrival_date && fl.arrival_date !== fl.departure_date && (
-                                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mt-1">
-                                        Arrives {format(new Date(fl.arrival_date), "EEE, dd MMM")}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          };
-
-                          return (
-                            <div className="border-t border-border/15 bg-gradient-to-b from-muted/40 via-muted/20 to-transparent px-6 py-5 space-y-5">
-                              {/* Outbound leg */}
-                              <FlightLegDetail
-                                fl={flight}
-                                legLabel={returnFl ? "Departure" : "Flight"}
-                                legDuration={duration}
-                                legBaggage={baggage}
-                                colorScheme="primary"
-                              />
-
-                              {/* Return leg */}
-                              {returnFl && (
-                                <>
-                                  <div className="border-t border-dashed border-border/40 my-1" />
-                                  <FlightLegDetail
-                                    fl={returnFl}
-                                    legLabel="Return"
-                                    legDuration={returnDuration}
-                                    legBaggage={returnBaggage || baggage}
-                                    colorScheme="emerald"
-                                  />
-                                </>
-                              )}
-
-                              {/* Footer */}
-                              <div className="flex items-center gap-4 pt-3 border-t border-border/15 text-[10px] text-muted-foreground">
-                                <span className="flex items-center gap-1.5 bg-muted/40 px-2.5 py-1 rounded-md"><Clock className="h-3 w-3" /> All times are local</span>
-                                {returnFl && <span className="text-border">•</span>}
-                                {returnFl && <span className="font-medium">Round-trip total: {duration}{returnDuration ? ` + ${returnDuration}` : ""}</span>}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </Card>
-                    );
-                  })}
-
+                  {filteredResults.map((flight, index) => renderFlightCard(flight, index))}
+                  
                   {/* Selection summary bar - BOTTOM */}
                   {selectedOutboundFlight && (
                     <Card className="border-primary/30 bg-card/95 backdrop-blur-xl overflow-hidden sticky bottom-4 z-10 shadow-2xl shadow-primary/15 rounded-2xl">
@@ -3466,7 +3420,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                         {selectionFareLines.length > 0 && (
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-primary-foreground/70">Total</span>
-                            <span className="text-lg font-black text-primary-foreground">${selectionTotal}</span>
+                            <span className="text-lg font-bold text-primary-foreground">${selectionTotal}</span>
                           </div>
                         )}
                       </div>
@@ -3527,7 +3481,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] text-muted-foreground font-medium">Total Amount</p>
-                                  <p className="text-2xl font-black text-primary tracking-tight">${selectionTotal}</p>
+                                  <p className="text-2xl font-bold text-primary tracking-tight">${selectionTotal}</p>
                                 </div>
                               </div>
                             </div>
@@ -3608,7 +3562,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                   { label: "Class", render: (f: Flight) => <span className="capitalize">{f.class || "Economy"}</span> },
                   { label: "Baggage", render: (f: Flight) => getBaggage(f.class) },
                   { label: "Seats", render: (f: Flight) => `${f.available_seats || 0} available` },
-                  { label: "Price", render: (f: Flight) => <span className="text-primary font-black text-base">${getEffectiveAdultPrice(f)}</span> },
+                  { label: "Price", render: (f: Flight) => <span className="text-primary font-bold text-base">${getEffectiveAdultPrice(f)}</span> },
                 ].map((row) => (
                   <tr key={row.label}>
                     <td className="py-2.5 px-2 text-xs font-semibold text-muted-foreground">{row.label}</td>

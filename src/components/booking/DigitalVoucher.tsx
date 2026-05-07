@@ -73,7 +73,7 @@ export function DigitalVoucher({
             </div>
             <div className="text-right">
               <p className="text-white/70 text-xs">Booking Reference</p>
-              <p className="text-xl font-mono font-bold tracking-wider">{bookingNumber}</p>
+              <p className="text-xl font-sans font-medium font-bold tracking-wider">{bookingNumber}</p>
             </div>
           </div>
         </div>

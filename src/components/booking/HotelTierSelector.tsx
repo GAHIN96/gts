@@ -269,7 +269,7 @@ export function HotelTierSelector({
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">From</p>
                       )}
                       <div className="flex items-baseline gap-0.5">
-                        <span className="text-xl font-black text-foreground">${price}</span>
+                        <span className="text-xl font-bold text-foreground">${price}</span>
                         <span className="text-xs text-muted-foreground">/pp</span>
                       </div>
                     </div>

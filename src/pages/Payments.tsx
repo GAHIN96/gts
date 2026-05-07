@@ -371,7 +371,7 @@ const Payments = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <p className="text-xs font-mono">{payment.bookings?.booking_number || "N/A"}</p>
+                      <p className="text-xs font-sans font-medium">{payment.bookings?.booking_number || "N/A"}</p>
                       <p className="text-[10px] text-muted-foreground">{payment.bookings?.booking_type}</p>
                     </TableCell>
                     <TableCell className="text-xs font-bold">${Number(payment.amount).toLocaleString()}</TableCell>
@@ -385,7 +385,7 @@ const Payments = () => {
                         <span className="text-[10px] text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-[11px] text-muted-foreground font-mono">
+                    <TableCell className="text-[11px] text-muted-foreground font-sans font-medium">
                       {format(new Date(payment.created_at!), "MM/dd HH:mm")}
                     </TableCell>
                     <TableCell>{getStatusBadge(payment.status || "unpaid")}</TableCell>

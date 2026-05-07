@@ -219,123 +219,129 @@ export function UniversalVoucher({ details, onClose, printMode = false }: Univer
             fontFamily: "'Segoe UI', -apple-system, system-ui, sans-serif",
           }}
         >
-          {/* ══════════ HEADER ══════════ */}
-          <div 
-            style={{ 
-              background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}ee 40%, ${primaryColor}cc 100%)`,
-              padding: "28px 36px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            {/* Decorative geometric shapes */}
+          {/* ══════════ ELITE COMMAND HEADER ══════════ */}
+            <div 
+              style={{ 
+                background: `#1A237E`,
+                padding: "48px 60px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                position: "relative",
+                overflow: "hidden",
+                borderBottom: `2px solid ${primaryColor}`,
+              }}
+            >
+            {/* Luminous accents */}
             <div style={{
-              position: "absolute", top: "-20px", right: "-20px",
-              width: "120px", height: "120px", borderRadius: "50%",
-              background: "rgba(255,255,255,0.04)",
+              position: "absolute", top: "0", left: "0", right: "0", height: "1px",
+              background: `linear-gradient(90deg, transparent, ${primaryColor}, transparent)`,
+              opacity: 0.5,
             }} />
             <div style={{
-              position: "absolute", bottom: "-30px", right: "80px",
-              width: "80px", height: "80px", borderRadius: "50%",
-              background: "rgba(255,255,255,0.03)",
-            }} />
-            <div style={{
-              position: "absolute", top: "0", right: "0", bottom: "0", left: "60%",
-              background: "linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.02) 100%)",
+              position: "absolute", top: "0", right: "0", bottom: "0", width: "40%",
+              background: `linear-gradient(135deg, transparent 0%, ${primaryColor}05 100%)`,
             }} />
             
-            <div style={{ display: "flex", alignItems: "center", gap: "18px", position: "relative", zIndex: 1 }}>
-              {settings.logo && (
+            <div style={{ display: "flex", alignItems: "center", gap: "24px", position: "relative", zIndex: 1 }}>
+              {settings.logo ? (
                 <div style={{
-                  background: "#fff",
-                  borderRadius: "12px",
-                  padding: "8px",
+                  background: "rgba(255,255,255,0.03)",
+                  borderRadius: "20px",
+                  padding: "12px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
                 }}>
                   <img 
                     src={settings.logo} 
                     alt="Logo" 
-                    style={{ height: "48px", width: "48px", objectFit: "contain" }} 
+                    style={{ height: "64px", width: "64px", objectFit: "contain" }} 
                   />
+                </div>
+              ) : (
+                <div style={{
+                  width: "64px", height: "64px", borderRadius: "20px",
+                  background: primaryColor,
+                  display: "flex", alignItems: "center", justifyItems: "center",
+                  fontSize: "24px", fontWeight: 900, color: "#fff",
+                }}>
+                  GTS
                 </div>
               )}
               <div>
-                <div style={{ color: "#fff", fontSize: "22px", fontWeight: 800, letterSpacing: "0.5px" }}>
-                  {settings.companyName || "GTS booking"}
+                <div style={{ color: "#fff", fontSize: "28px", fontWeight: 900, letterSpacing: "-0.5px", textTransform: "uppercase" }}>
+                  {settings.companyName || "GTS_SYSTEMS"}
                 </div>
-                <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "11px", marginTop: "4px", letterSpacing: "0.5px", fontWeight: 400 }}>
-                  {settings.tagline || "Your Gateway to Amazing Adventures"}
+                <div style={{ color: primaryColor, fontSize: "10px", marginTop: "6px", letterSpacing: "4px", fontWeight: 900, textTransform: "uppercase" }}>
+                  {settings.tagline || "Premium Travel Logistics"}
                 </div>
               </div>
             </div>
             <div style={{ textAlign: "right", position: "relative", zIndex: 1 }}>
               <div style={{ 
-                color: "rgba(255,255,255,0.5)", fontSize: "9px", textTransform: "uppercase", 
-                letterSpacing: "2px", fontWeight: 600,
+                color: "rgba(255,255,255,0.2)", fontSize: "10px", textTransform: "uppercase", 
+                letterSpacing: "3px", fontWeight: 900,
               }}>
-                Booking Reference
+                Reference Number
               </div>
               <div style={{ 
-                color: "#fff", fontSize: "20px", fontWeight: 800, fontFamily: "'Courier New', monospace",
-                letterSpacing: "2px", marginTop: "4px",
+                color: "#fff", fontSize: "24px", fontWeight: 900, fontFamily: "monospace",
+                letterSpacing: "4px", marginTop: "8px", textShadow: `0 0 20px ${primaryColor}40`,
               }}>
                 {details.bookingNumber}
               </div>
-              <div style={{ marginTop: "6px", fontSize: "10px", color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>
-                {format(new Date(), "dd/MM/yyyy")}
+              <div style={{ marginTop: "8px", fontSize: "11px", color: "rgba(255,255,255,0.4)", fontWeight: 700, fontFamily: "monospace", letterSpacing: "1px" }}>
+                ISSUED: {format(new Date(), "dd.MM.yyyy / HH:mm")}
               </div>
             </div>
           </div>
 
           {/* ══════════ TYPE BANNER ══════════ */}
           <div style={{ 
-            background: "#fff", 
+            background: "#f8fafc", 
             borderBottom: "1px solid #e2e8f0",
-            padding: "14px 36px",
+            padding: "20px 60px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <div style={{
-                width: "34px", height: "34px", borderRadius: "10px",
+                width: "40px", height: "40px", borderRadius: "12px",
                 background: `${primaryColor}10`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 color: primaryColor,
-                border: `1.5px solid ${primaryColor}20`,
+                border: `1px solid ${primaryColor}20`,
               }}>
                 {typeIcons[details.type]}
               </div>
               <div style={{ 
-                fontSize: "13px", fontWeight: 800, color: primaryColor,
-                textTransform: "uppercase", letterSpacing: "2px",
+                fontSize: "14px", fontWeight: 900, color: "#1a237e",
+                textTransform: "uppercase", letterSpacing: "4px",
               }}>
                 {typeLabels[details.type]}
               </div>
             </div>
             <div style={{
-              display: "inline-flex", alignItems: "center", gap: "8px",
-              padding: "7px 16px", borderRadius: "20px",
-              background: details.status === "pending" ? "#fffbeb" : "#f0fdf4",
-              border: `1.5px solid ${details.status === "pending" ? "#fde68a" : "#86efac"}`,
+              display: "inline-flex", alignItems: "center", gap: "10px",
+              padding: "8px 20px", borderRadius: "12px",
+              background: details.status === "pending" ? "rgba(245,158,11,0.05)" : "rgba(34,197,94,0.05)",
+              border: `1px solid ${details.status === "pending" ? "rgba(245,158,11,0.2)" : "rgba(34,197,94,0.2)"}`,
             }}>
               <div style={{
                 width: "8px", height: "8px", borderRadius: "50%",
                 background: details.status === "pending" ? "#f59e0b" : "#22c55e",
-                boxShadow: `0 0 8px ${details.status === "pending" ? "#f59e0b50" : "#22c55e50"}`,
+                boxShadow: `0 0 12px ${details.status === "pending" ? "#f59e0b" : "#22c55e"}`,
               }} />
               <span style={{ 
-                fontSize: "11px", fontWeight: 700, 
-                color: details.status === "pending" ? "#92400e" : "#166534",
-                textTransform: "uppercase", letterSpacing: "0.8px",
+                fontSize: "10px", fontWeight: 900, 
+                color: details.status === "pending" ? "#f59e0b" : "#22c55e",
+                textTransform: "uppercase", letterSpacing: "2px",
               }}>
-                {details.status === "pending" ? "PENDING PAYMENT" : "CONFIRMED"}
+                {details.status === "pending" ? "Under Review" : "Confirmed"}
               </span>
             </div>
           </div>
@@ -352,26 +358,30 @@ export function UniversalVoucher({ details, onClose, printMode = false }: Univer
 
             {/* ══════════ PASSENGER TABLE ══════════ */}
             {details.passengerNames && details.passengerNames.length > 0 && !details.packageDetails?.passengers?.length && (
-              <div style={{ marginTop: "28px", pageBreakInside: "avoid" }}>
-                <SectionHeader title="PASSENGERS" icon={<Users style={{ width: 14, height: 14 }} />} color={primaryColor} />
-                <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "14px", border: "1px solid #e8ecf1", borderRadius: "8px", overflow: "hidden" }}>
-                  <thead>
-                    <tr style={{ background: `${primaryColor}08` }}>
-                      <th style={thStyle}>#</th>
-                      <th style={{ ...thStyle, textAlign: "left" }}>Full Name</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {details.passengerNames.map((name, idx) => (
-                      <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9", background: idx % 2 === 0 ? "#fff" : "#fafbfc" }}>
-                        <td style={{ ...tdStyle, fontWeight: 600, color: "#94a3b8", width: "50px" }}>{String(idx + 1).padStart(2, "0")}</td>
-                        <td style={{ ...tdStyle, textAlign: "left", fontWeight: 700, color: "#0f172a", textTransform: "uppercase" }}>
-                          {name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')}
-                        </td>
+              <div style={{ marginTop: "40px", pageBreakInside: "avoid" }}>
+                <SectionHeader title="Passenger List" icon={<Users style={{ width: 14, height: 14 }} />} color={primaryColor} />
+                <div style={{ borderRadius: "24px", overflow: "hidden", border: "1px solid rgba(0,0,0,0.05)", marginTop: "20px", boxShadow: "0 10px 30px rgba(0,0,0,0.02)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#f1f5f9" }}>
+                        <th style={{ ...thStyle, color: "rgba(0,0,0,0.3)", borderBottom: "none" }}>ID</th>
+                        <th style={{ ...thStyle, textAlign: "left", color: "#1a237e", borderBottom: "none" }}>Passenger Name</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {details.passengerNames.map((name, idx) => (
+                        <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9", background: idx % 2 === 0 ? "#fff" : "#fafbfc" }}>
+                          <td style={{ ...tdStyle, fontWeight: 900, color: primaryColor, width: "80px", fontFamily: "monospace", fontSize: "11px" }}>
+                            [{(idx + 1).toString().padStart(2, "0")}]
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: "left", fontWeight: 900, color: "#1A237E", textTransform: "uppercase", letterSpacing: "1px", fontSize: "13px" }}>
+                            {name}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 

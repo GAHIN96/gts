@@ -107,11 +107,14 @@ function createClusterIcon(count: number, fromPrice: number) {
   });
 }
 
+import { RoomConfig } from "@/components/booking/HotelRoomConfigurator";
+import { resolveRoomPrice } from "@/lib/roomPricingTier";
+
 interface HotelMapViewProps {
   hotels: HotelType[];
   nightCount: number | null;
   roomType?: string;
-  roomCount?: number;
+  roomConfigs?: RoomConfig[];
   onHotelSelect?: (hotel: HotelType) => void;
   onQuickView?: (hotel: HotelType) => void;
 }
@@ -156,6 +159,7 @@ function HotelPopup({
   countryName,
   nightCount,
   pricePerNight,
+  totalPrice,
   roomCount,
   onHotelSelect,
   onQuickView,
@@ -165,11 +169,11 @@ function HotelPopup({
   countryName?: string | null;
   nightCount: number | null;
   pricePerNight: number;
+  totalPrice: number | null;
   roomCount: number;
   onHotelSelect?: (hotel: HotelType) => void;
   onQuickView?: (hotel: HotelType) => void;
 }) {
-  const totalPrice = nightCount && pricePerNight ? nightCount * pricePerNight * Math.max(1, roomCount) : null;
   const flagUrl = countryName ? getCountryFlagUrl(countryName) : null;
 
   return (
@@ -260,7 +264,7 @@ export function HotelMapView({
   hotels,
   nightCount,
   roomType,
-  roomCount = 1,
+  roomConfigs = [],
   onHotelSelect,
   onQuickView,
 }: HotelMapViewProps) {
@@ -292,12 +296,27 @@ export function HotelMapView({
 
   const computePrice = (hotel: HotelType): number => {
     const rooms = hotel.hotel_rooms || [];
+    const specials = (hotel as any).hotel_special_prices || [];
+    const roomCount = roomConfigs.length || 1;
+    
     if (roomType) {
-      const picked = pickRoomBand(rooms as any, roomType, roomCount);
-      if (picked?.price_per_night) return picked.price_per_night;
+      let total = 0;
+      for (let i = 0; i < roomCount; i++) {
+        const config = roomConfigs[i] || { adults: 1, children6to12: 0, children2to6: 0, infants: 0 };
+        // Approximate availability: use hotel's total inventory as a hint since we don't have per-night availability in the map props easily
+        const resolved = resolveRoomPrice(rooms as any, roomType, 20, specials, new Date());
+        if (resolved) {
+          total += (resolved.adult * config.adults) + 
+                   (resolved.child6 * config.children6to12) + 
+                   (resolved.child2 * config.children2to6) + 
+                   (resolved.infant * config.infants);
+        } else {
+          total += (hotel.price_per_night || 0) * config.adults;
+        }
+      }
+      return total / Math.max(1, roomCount);
     }
-    if (hotel.price_per_night) return hotel.price_per_night;
-    return rooms[0]?.price_per_night || 0;
+    return hotel.price_per_night || (rooms[0]?.price_per_night as number) || 0;
   };
 
   // Geocoding loop (unchanged)
@@ -525,6 +544,7 @@ export function HotelMapView({
           countryName={countryName}
           nightCount={nightCount}
           pricePerNight={pricePerNight}
+          totalPrice={nightCount ? pricePerNight * nightCount * Math.max(1, roomCount) : null}
           roomCount={roomCount}
           onHotelSelect={onHotelSelect}
           onQuickView={onQuickView}

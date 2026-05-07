@@ -602,7 +602,7 @@ function DashboardTab({ stats, fmt }: { stats: any; fmt: (n: number) => string }
                   <TableRow key={agency.id} className={agency.overLimit ? "bg-destructive/5" : ""}>
                     <TableCell className="text-xs font-medium">{agency.agency_name}</TableCell>
                     <TableCell className="text-xs">{fmt(agency.credit_limit || 0)} <span className="text-[10px] text-muted-foreground ml-1">({agency.credit_limit_type})</span></TableCell>
-                    <TableCell className="text-xs font-mono">{fmt(agency.used_credit || 0)}</TableCell>
+                    <TableCell className="text-xs font-sans font-medium">{fmt(agency.used_credit || 0)}</TableCell>
                     <TableCell className="w-[120px]">
                       <div className="flex items-center gap-2">
                         <Progress value={Math.min(agency.creditUsage, 100)} className="h-1.5 flex-1" />
@@ -933,7 +933,7 @@ function CreditReportTab() {
             <div className="space-y-3 max-h-[200px] overflow-y-auto">
               {agencySummaries.filter((a) => a.credit_limit > 0).sort((a, b) => b.usage - a.usage).slice(0, 8).map((agency) => (
                 <div key={agency.id} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs"><span className="font-medium truncate max-w-[120px]">{agency.agency_name}</span><span className={cn("font-mono text-[10px]", agency.usage > 90 ? "text-destructive font-bold" : agency.usage > 70 ? "text-amber-600" : "text-muted-foreground")}>{agency.usage.toFixed(0)}%</span></div>
+                  <div className="flex items-center justify-between text-xs"><span className="font-medium truncate max-w-[120px]">{agency.agency_name}</span><span className={cn("font-sans font-medium text-[10px]", agency.usage > 90 ? "text-destructive font-bold" : agency.usage > 70 ? "text-amber-600" : "text-muted-foreground")}>{agency.usage.toFixed(0)}%</span></div>
                   <Progress value={Math.min(agency.usage, 100)} className="h-1.5" />
                 </div>
               ))}
@@ -1325,7 +1325,7 @@ function BookingReportsTab() {
                         <TableCell className="text-xs px-2">
                           {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
                         </TableCell>
-                        <TableCell className="font-mono text-xs font-medium">{b.booking_number}</TableCell>
+                        <TableCell className="font-sans font-medium text-xs font-medium">{b.booking_number}</TableCell>
                         <TableCell className="text-xs capitalize">{b.booking_type}</TableCell>
                         <TableCell className="text-xs">{getServiceName(b)}</TableCell>
                         <TableCell className="text-xs">{getDestination(b)}</TableCell>
@@ -2088,7 +2088,7 @@ function PaymentsTab() {
                   <TableRow key={payment.id} className={selectedIds.includes(payment.id) ? "bg-muted/50" : ""}>
                     <TableCell>{payment.status === "proof_uploaded" && <Checkbox checked={selectedIds.includes(payment.id)} onCheckedChange={() => toggleSelect(payment.id)} />}</TableCell>
                     <TableCell>
-                      <p className="text-xs font-mono">{payment.bookings?.booking_number || "N/A"}</p>
+                      <p className="text-xs font-sans font-medium">{payment.bookings?.booking_number || "N/A"}</p>
                       <p className="text-[10px] text-muted-foreground">{payment.bookings?.booking_type}</p>
                     </TableCell>
                     <TableCell className="text-xs font-bold">{fmt(Number(payment.amount))}</TableCell>
@@ -2100,7 +2100,7 @@ function PaymentsTab() {
                         </Button>
                       ) : <span className="text-[10px] text-muted-foreground">—</span>}
                     </TableCell>
-                    <TableCell className="text-[11px] text-muted-foreground font-mono">{format(new Date(payment.created_at!), "MM/dd HH:mm")}</TableCell>
+                    <TableCell className="text-[11px] text-muted-foreground font-sans font-medium">{format(new Date(payment.created_at!), "MM/dd HH:mm")}</TableCell>
                     <TableCell>{getPaymentStatusBadge(payment.status || "unpaid")}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">

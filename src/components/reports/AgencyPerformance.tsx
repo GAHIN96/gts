@@ -5,7 +5,6 @@ import {
   TrendingUp, 
   DollarSign,
   Package,
-  Users,
   ArrowUpRight,
   CalendarRange,
   FileSpreadsheet,
@@ -26,11 +25,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
   BarChart,
   Bar,
   XAxis,
@@ -41,12 +35,14 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from "recharts";
 import { useBookings, type Booking } from "@/hooks/useBookings";
 import { useAgencies } from "@/hooks/useAgencies";
 import { exportToExcel } from "@/utils/excelExport";
 import jsPDF from "jspdf";
 import { format, parseISO, isWithinInterval, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const COLORS = ['hsl(231, 70%, 30%)', 'hsl(6, 100%, 69%)', 'hsl(45, 100%, 51%)', 'hsl(142, 76%, 36%)', 'hsl(270, 70%, 60%)'];
 
@@ -57,7 +53,6 @@ interface AgencyStats {
   confirmedBookings: number;
   totalRevenue: number;
   averageBookingValue: number;
-  userId: string;
   packageCount: number;
   flightCount: number;
   hotelCount: number;
@@ -76,13 +71,11 @@ interface DateRange {
 export function AgencyPerformance() {
   const { data: bookings, isLoading } = useBookings();
   const { data: agencies } = useAgencies();
-  // Date range filter state - default to current month
   const [dateRange, setDateRange] = useState<DateRange>({
     from: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
     to: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
   });
 
-  // Quick filter presets
   const setQuickFilter = (preset: 'thisMonth' | 'lastMonth' | 'last3Months' | 'last6Months' | 'thisYear' | 'allTime') => {
     const now = new Date();
     let from: Date;
@@ -98,21 +91,19 @@ export function AgencyPerformance() {
         to = endOfMonth(subMonths(now, 1));
         break;
       case 'last3Months':
-        from = startOfMonth(subMonths(now, 2));
-        to = endOfMonth(now);
+        from = startOfMonth(subMonths(now, 3));
         break;
       case 'last6Months':
-        from = startOfMonth(subMonths(now, 5));
-        to = endOfMonth(now);
+        from = startOfMonth(subMonths(now, 6));
         break;
       case 'thisYear':
-        from = new Date(now.getFullYear(), 0, 1);
-        to = new Date(now.getFullYear(), 11, 31);
+        from = startOfMonth(new Date(now.getFullYear(), 0, 1));
         break;
       case 'allTime':
-        from = new Date(2020, 0, 1);
-        to = now;
+        from = new Date(2000, 0, 1);
         break;
+      default:
+        from = startOfMonth(now);
     }
 
     setDateRange({
@@ -123,79 +114,68 @@ export function AgencyPerformance() {
 
   const filteredBookings = useMemo(() => {
     if (!bookings) return [];
-    
-    return bookings.filter((booking: Booking) => {
-      if (!booking.created_at) return true;
-      
-      try {
-        const bookingDate = parseISO(booking.created_at);
-        const fromDate = parseISO(dateRange.from);
-        const toDate = parseISO(dateRange.to);
-        
-        return isWithinInterval(bookingDate, { start: fromDate, end: toDate });
-      } catch {
-        return true;
-      }
+    return bookings.filter((b) => {
+      if (!b.created_at) return false;
+      const date = parseISO(b.created_at);
+      return isWithinInterval(date, {
+        start: parseISO(dateRange.from),
+        end: parseISO(dateRange.to),
+      });
     });
   }, [bookings, dateRange]);
 
   const agencyStats = useMemo(() => {
-    if (!filteredBookings || !agencies) return [];
-
     const statsMap = new Map<string, AgencyStats>();
 
-    filteredBookings.forEach((booking: Booking) => {
-      const agency = booking.agencies;
-      if (!agency) return;
+    filteredBookings.forEach((b) => {
+      const agencyId = b.agency_id || "direct";
+      const agencyName = b.agencies?.agency_name || "Direct Booking";
+      
+      const existing = statsMap.get(agencyId) || {
+        agencyId,
+        agencyName,
+        totalBookings: 0,
+        confirmedBookings: 0,
+        totalRevenue: 0,
+        averageBookingValue: 0,
+        packageCount: 0,
+        flightCount: 0,
+        hotelCount: 0,
+        tourCount: 0,
+        visaCount: 0,
+        commissionRate: 0,
+        commissionEarned: 0,
+        outstandingDebt: 0,
+      };
 
-      const agencyMeta = agencies.find(a => a.id === agency.id);
-      const commissionRate = agencyMeta?.commission_rate || 0;
-      const existing = statsMap.get(agency.id);
-      const isConfirmed = booking.status === "confirmed";
-      const amount = booking.total_amount || 0;
-      const isUnpaid = booking.status === "pending_payment" || booking.status === "payment_under_review" || booking.status === "draft";
+      existing.totalBookings += 1;
+      if (b.status === "confirmed") existing.confirmedBookings += 1;
+      existing.totalRevenue += b.total_amount || 0;
+      
+      if (b.booking_type === "package") existing.packageCount++;
+      if (b.booking_type === "flight") existing.flightCount++;
+      if (b.booking_type === "hotel") existing.hotelCount++;
+      if (b.booking_type === "tour") existing.tourCount++;
+      if (b.booking_type === "visa") existing.visaCount++;
 
-      if (existing) {
-        existing.totalBookings++;
-        existing.totalRevenue += amount;
-        if (isConfirmed) existing.confirmedBookings++;
-        existing.averageBookingValue = existing.totalRevenue / existing.totalBookings;
-        existing.commissionEarned += amount * (commissionRate / 100);
-        if (isUnpaid) existing.outstandingDebt += amount;
-        if (booking.booking_type === "package") existing.packageCount++;
-        if (booking.booking_type === "flight") existing.flightCount++;
-        if (booking.booking_type === "hotel") existing.hotelCount++;
-        if (booking.booking_type === "tour") existing.tourCount++;
-        if (booking.booking_type === "visa") existing.visaCount++;
-      } else {
-        statsMap.set(agency.id, {
-          agencyId: agency.id,
-          agencyName: agency.agency_name,
-          totalBookings: 1,
-          confirmedBookings: isConfirmed ? 1 : 0,
-          totalRevenue: amount,
-          averageBookingValue: amount,
-          userId: agency.user_id,
-          packageCount: booking.booking_type === "package" ? 1 : 0,
-          flightCount: booking.booking_type === "flight" ? 1 : 0,
-          hotelCount: booking.booking_type === "hotel" ? 1 : 0,
-          tourCount: booking.booking_type === "tour" ? 1 : 0,
-          visaCount: booking.booking_type === "visa" ? 1 : 0,
-          commissionRate,
-          commissionEarned: amount * (commissionRate / 100),
-          outstandingDebt: isUnpaid ? amount : 0,
-        });
+      if (b.status !== "confirmed" && b.status !== "canceled") {
+        existing.outstandingDebt += b.total_amount || 0;
       }
+
+      statsMap.set(agencyId, existing);
     });
 
-    return Array.from(statsMap.values())
-      .sort((a, b) => b.totalRevenue - a.totalRevenue);
-  }, [filteredBookings, agencies]);
+    statsMap.forEach((stat, id) => {
+      const agency = agencies?.find(a => a.id === id);
+      if (agency) {
+        stat.commissionRate = agency.commission_rate || 0;
+        stat.commissionEarned = (stat.totalRevenue * stat.commissionRate) / 100;
+      }
+      stat.averageBookingValue = stat.totalRevenue / (stat.totalBookings || 1);
+    });
 
-  const top10ByRevenue = agencyStats.slice(0, 10);
-  const top10ByBookings = [...agencyStats]
-    .sort((a, b) => b.totalBookings - a.totalBookings)
-    .slice(0, 10);
+    return Array.from(statsMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+  }, [filteredBookings, agencies]);
 
   const totalAgencyRevenue = agencyStats.reduce((sum, a) => sum + a.totalRevenue, 0);
   const totalAgencyBookings = agencyStats.reduce((sum, a) => sum + a.totalBookings, 0);
@@ -231,7 +211,7 @@ export function AgencyPerformance() {
     pdf.save(`Agency_Performance_${format(new Date(), "yyyy-MM-dd")}.pdf`);
   };
 
-  const chartData = top10ByRevenue.map((agency, index) => ({
+  const chartData = agencyStats.slice(0, 10).map((agency, index) => ({
     name: agency.agencyName.length > 15 
       ? agency.agencyName.substring(0, 15) + "..." 
       : agency.agencyName,
@@ -241,7 +221,7 @@ export function AgencyPerformance() {
     color: COLORS[index % COLORS.length],
   }));
 
-  const pieData = top10ByRevenue.slice(0, 5).map((agency, index) => ({
+  const pieData = agencyStats.slice(0, 5).map((agency, index) => ({
     name: agency.agencyName,
     value: agency.totalRevenue,
     color: COLORS[index % COLORS.length],
@@ -256,130 +236,122 @@ export function AgencyPerformance() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Date Range Filter */}
-      <Card className="shadow-card">
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CalendarRange className="h-5 w-5 text-primary" />
-            Date Range Filter
-          </CardTitle>
-          <CardDescription>
-            Filter agency performance by time period
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-4">
-            {/* Quick Filters */}
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => setQuickFilter('thisMonth')}>
-                This Month
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setQuickFilter('lastMonth')}>
-                Last Month
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setQuickFilter('last3Months')}>
-                Last 3 Months
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setQuickFilter('last6Months')}>
-                Last 6 Months
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setQuickFilter('thisYear')}>
-                This Year
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setQuickFilter('allTime')}>
-                All Time
-              </Button>
-            </div>
-            
-            {/* Custom Date Range */}
-            <div className="flex items-end gap-3 ml-auto">
-              <div>
-                <Label className="text-xs">From</Label>
-                <DateInput
-                  value={dateRange.from}
-                  onValueChange={(v) => setDateRange(prev => ({ ...prev, from: v }))}
-                  className="w-40"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">To</Label>
-                <DateInput
-                  value={dateRange.to}
-                  onValueChange={(v) => setDateRange(prev => ({ ...prev, to: v }))}
-                  className="w-40"
-                />
-              </div>
-            </div>
+    <div className="space-y-8 animate-fade-in">
+      {/* ═══════ BI PERFORMANCE HEADER ═══════ */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-card p-8 rounded-3xl border shadow-sm relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-blue-500/5 pointer-events-none" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-2">
+            <Badge variant="secondary" className="bg-primary/10 text-primary border-none font-bold text-[10px] uppercase tracking-wider px-2">Partner Insights</Badge>
+            <div className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Network Analytics</span>
           </div>
-          
-          {/* Active Range Display */}
-          <div className="mt-4 pt-3 border-t border-border">
-            <p className="text-sm text-muted-foreground">
-              Showing data from <span className="font-medium text-foreground">{format(parseISO(dateRange.from), 'MMM dd, yyyy')}</span> to{' '}
-              <span className="font-medium text-foreground">{format(parseISO(dateRange.to), 'MMM dd, yyyy')}</span>
-            </p>
+          <h2 className="text-3xl font-bold text-foreground tracking-tight">Agency Performance Analytics</h2>
+          <p className="text-sm text-muted-foreground mt-1 font-medium">Real-time performance tracking and revenue analysis across all partners.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 relative z-10">
+          <div className="flex items-center gap-2 bg-muted/30 border rounded-2xl p-1">
+            <DateInput 
+              value={dateRange.from} 
+              onValueChange={(val) => setDateRange(prev => ({ ...prev, from: val }))} 
+              className="bg-transparent border-0 h-9 w-32 text-xs font-bold uppercase tracking-wider"
+            />
+            <div className="w-[1px] h-4 bg-border" />
+            <DateInput 
+              value={dateRange.to} 
+              onValueChange={(val) => setDateRange(prev => ({ ...prev, to: val }))} 
+              className="bg-transparent border-0 h-9 w-32 text-xs font-bold uppercase tracking-wider"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={handleExportExcel} size="lg" className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md">
+              <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
+            </Button>
+            <Button variant="outline" size="lg" onClick={handleExportPDF} className="rounded-2xl border-muted bg-card font-bold text-xs uppercase tracking-wider shadow-sm">
+              <FileText className="h-4 w-4 mr-2 text-blue-600" /> PDF
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Reporting Period Filter */}
+      <Card className="border-none shadow-sm overflow-hidden">
+        <CardContent className="p-4 bg-muted/20">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'thisMonth', label: 'This Month' },
+                { id: 'lastMonth', label: 'Last Month' },
+                { id: 'last3Months', label: 'Quarterly' },
+                { id: 'last6Months', label: 'Half Year' },
+                { id: 'thisYear', label: 'Yearly' },
+                { id: 'allTime', label: 'All Time' }
+              ].map(p => (
+                <Button key={p.id} size="sm" variant="ghost" onClick={() => setQuickFilter(p.id as any)} className="h-9 px-4 rounded-xl hover:bg-card hover:shadow-sm text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-all">
+                  {p.label}
+                </Button>
+              ))}
+            </div>
+            <div className="px-4 py-1.5 rounded-full bg-primary/5 border border-primary/10">
+              <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Active Agency Partners: <span className="text-foreground ml-1">{activeAgencies}</span></span>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Active Agencies</p><p className="text-2xl font-bold">{activeAgencies}</p></div><div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center"><Building2 className="h-5 w-5 text-primary" /></div></div></CardContent></Card>
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Total Revenue</p><p className="text-2xl font-bold">${totalAgencyRevenue.toLocaleString()}</p></div><div className="h-10 w-10 rounded-xl bg-success/10 flex items-center justify-center"><DollarSign className="h-5 w-5 text-success" /></div></div></CardContent></Card>
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Total Bookings</p><p className="text-2xl font-bold">{totalAgencyBookings}</p></div><div className="h-10 w-10 rounded-xl bg-gold/10 flex items-center justify-center"><Package className="h-5 w-5 text-gold" /></div></div></CardContent></Card>
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Total Commission</p><p className="text-2xl font-bold text-coral">${Math.round(totalCommission).toLocaleString()}</p></div><div className="h-10 w-10 rounded-xl bg-coral/10 flex items-center justify-center"><TrendingUp className="h-5 w-5 text-coral" /></div></div></CardContent></Card>
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Outstanding Debt</p><p className="text-2xl font-bold text-amber-600">${totalDebt.toLocaleString()}</p></div><div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center"><DollarSign className="h-5 w-5 text-amber-600" /></div></div></CardContent></Card>
+      {/* Performance Summary Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {[
+          { label: "Active Agencies", value: activeAgencies, icon: Building2, color: "text-blue-600", bg: "bg-blue-50" },
+          { label: "Gross Revenue", value: `$${totalAgencyRevenue.toLocaleString()}`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "Total Bookings", value: totalAgencyBookings, icon: Package, color: "text-amber-600", bg: "bg-amber-50" },
+          { label: "Total Commission", value: `$${Math.round(totalCommission).toLocaleString()}`, icon: TrendingUp, color: "text-indigo-600", bg: "bg-indigo-50" },
+          { label: "Total Outstanding", value: `$${totalDebt.toLocaleString()}`, icon: DollarSign, color: "text-destructive", bg: "bg-destructive/5" },
+        ].map((s, i) => (
+          <Card key={i} className="border-none shadow-sm bg-card hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center shrink-0", s.bg)}>
+                  <s.icon className={cn("h-6 w-6", s.color)} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{s.label}</p>
+                  <p className="text-xl font-bold text-foreground mt-0.5 tracking-tight">{s.value}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Charts Row */}
+      {/* Analytics Visualization */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bar Chart - Top 10 by Revenue */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-gold" />
-              Top 10 Agencies by Revenue
-            </CardTitle>
-            <CardDescription>Total revenue generated per agency</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {chartData.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                No agency data available for selected period
+        <Card className="border-none shadow-sm overflow-hidden">
+          <CardHeader className="p-8 border-b bg-muted/30">
+            <div className="flex items-center gap-3">
+              <Trophy className="h-5 w-5 text-amber-500" />
+              <div>
+                <CardTitle className="text-lg font-bold">Top Agency Performance</CardTitle>
+                <CardDescription className="text-xs font-medium uppercase tracking-wider">Ranking by total revenue generated</CardDescription>
               </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-8">
+            {chartData.length === 0 ? (
+              <div className="text-center py-20 text-muted-foreground/30 font-bold uppercase tracking-widest">No agency activity found</div>
             ) : (
-              <div className="h-[300px]">
+              <div className="h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(240, 6%, 90%)" />
-                    <XAxis 
-                      type="number" 
-                      stroke="hsl(231, 15%, 46%)" 
-                      fontSize={12}
-                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                    />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
-                      stroke="hsl(231, 15%, 46%)" 
-                      fontSize={11} 
-                      width={120}
-                    />
+                  <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 30 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                    <XAxis type="number" fontSize={11} fontWeight={500} axisLine={false} tickLine={false} tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
+                    <YAxis dataKey="name" type="category" fontSize={11} fontWeight={500} axisLine={false} tickLine={false} width={120} />
                     <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(0, 0%, 100%)', 
-                        border: '1px solid hsl(240, 6%, 90%)',
-                        borderRadius: '8px',
-                      }}
+                      contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
                       formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
-                      labelFormatter={(_, payload) => payload[0]?.payload?.fullName || ''}
                     />
-                    <Bar 
-                      dataKey="revenue" 
-                      fill="hsl(231, 70%, 30%)" 
-                      radius={[0, 4, 4, 0]}
-                    />
+                    <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -387,51 +359,31 @@ export function AgencyPerformance() {
           </CardContent>
         </Card>
 
-        {/* Pie Chart - Revenue Distribution */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle>Revenue Distribution</CardTitle>
-            <CardDescription>Top 5 agencies share of total revenue</CardDescription>
+        <Card className="border-none shadow-sm overflow-hidden">
+          <CardHeader className="p-8 border-b bg-muted/30">
+            <CardTitle className="text-lg font-bold text-center">Revenue Market Share</CardTitle>
+            <CardDescription className="text-xs font-medium uppercase tracking-wider text-center">Concentration among top 5 agency partners</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-8">
             {pieData.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                No agency data available for selected period
-              </div>
+              <div className="text-center py-20 text-muted-foreground/30 font-bold uppercase tracking-widest">No market data available</div>
             ) : (
               <>
-                <div className="h-[200px]">
+                <div className="h-[250px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
+                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={8} dataKey="value">
+                        {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />)}
                       </Pie>
-                      <Tooltip 
-                        formatter={(value: number) => `$${value.toLocaleString()}`}
-                      />
+                      <Tooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="flex flex-wrap gap-2 mt-4 justify-center">
-                  {pieData.map((entry, index) => (
-                    <div key={entry.name} className="flex items-center gap-2">
-                      <div 
-                        className="h-3 w-3 rounded-full" 
-                        style={{ backgroundColor: entry.color }}
-                      />
-                      <span className="text-xs text-muted-foreground truncate max-w-[100px]">
-                        {entry.name}
-                      </span>
+                <div className="flex flex-wrap gap-2 mt-8 justify-center">
+                  {pieData.map((entry) => (
+                    <div key={entry.name} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-muted/30 border border-muted transition-colors hover:bg-muted/50">
+                      <div className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{entry.name}</span>
                     </div>
                   ))}
                 </div>
@@ -441,80 +393,73 @@ export function AgencyPerformance() {
         </Card>
       </div>
 
-      {/* Detailed Table */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* Agency Performance Details Table */}
+      <Card className="border-none shadow-sm overflow-hidden">
+        <CardHeader className="p-8 bg-muted/30 border-b">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-primary" />
-                Agency Performance Details
-              </CardTitle>
-              <CardDescription>Complete breakdown with service types, commission, and debt</CardDescription>
+              <CardTitle className="text-xl font-bold">Agency Performance Ledger</CardTitle>
+              <CardDescription className="text-sm font-medium">Detailed audit of all partner activity and financial metrics</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" className="bg-success hover:bg-success/90" onClick={handleExportExcel} disabled={agencyStats.length === 0}><FileSpreadsheet className="h-4 w-4 mr-1" /> Excel</Button>
-              <Button size="sm" variant="outline" onClick={handleExportPDF} disabled={agencyStats.length === 0}><FileText className="h-4 w-4 mr-1" /> PDF</Button>
+              <Button variant="outline" size="sm" onClick={handleExportExcel} className="bg-card font-bold text-xs uppercase tracking-wider" disabled={agencyStats.length === 0}>
+                <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" /> Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExportPDF} className="bg-card font-bold text-xs uppercase tracking-wider" disabled={agencyStats.length === 0}>
+                <FileText className="h-4 w-4 mr-2 text-blue-600" /> PDF
+              </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {agencyStats.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No agency performance data available for selected period</p>
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/30">
+              <Building2 className="h-12 w-12 mb-3" />
+              <p className="font-bold uppercase tracking-widest text-xs">No agency activity detected</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">#</TableHead>
-                    <TableHead>Agency</TableHead>
-                    <TableHead className="text-center">Bookings</TableHead>
-                    <TableHead className="text-center">Confirmed</TableHead>
-                    <TableHead className="text-center">Pkg</TableHead>
-                    <TableHead className="text-center">Flt</TableHead>
-                    <TableHead className="text-center">Htl</TableHead>
-                    <TableHead className="text-center">Tour</TableHead>
-                    <TableHead className="text-center">Visa</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Commission</TableHead>
-                    <TableHead className="text-right">Outstanding</TableHead>
+                <TableHeader className="bg-muted/50">
+                  <TableRow className="border-none hover:bg-transparent">
+                    <TableHead className="w-16 text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground px-8">Rank</TableHead>
+                    <TableHead className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Agency Name</TableHead>
+                    <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Orders</TableHead>
+                    <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Conf.</TableHead>
+                    <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground">PKG</TableHead>
+                    <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground">FLT</TableHead>
+                    <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Revenue</TableHead>
+                    <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Commission</TableHead>
+                    <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground pr-8">Outstanding</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {agencyStats.map((agency, index) => (
-                    <TableRow key={agency.agencyId}>
-                      <TableCell>
-                        {index < 3 ? (
-                          <Badge className={`${index === 0 ? 'bg-gold text-white' : ''} ${index === 1 ? 'bg-slate-400 text-white' : ''} ${index === 2 ? 'bg-amber-600 text-white' : ''}`}>
-                            {index + 1}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">{index + 1}</span>
-                        )}
+                    <TableRow key={agency.agencyId} className="hover:bg-muted/30 transition-colors border-b">
+                      <TableCell className="text-center px-8">
+                        <span className={`inline-flex items-center justify-center h-7 w-7 rounded-lg text-xs font-bold ${index === 0 ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground"}`}>
+                          {index + 1}
+                        </span>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                            {agency.agencyName.charAt(0)}
-                          </div>
-                          <span className="font-medium text-sm">{agency.agencyName}</span>
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs border border-primary/20">{agency.agencyName.charAt(0)}</div>
+                          <span className="font-bold text-foreground text-sm">{agency.agencyName}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-center"><Badge variant="outline">{agency.totalBookings}</Badge></TableCell>
-                      <TableCell className="text-center"><Badge className="bg-success/10 text-success border-success/20">{agency.confirmedBookings}</Badge></TableCell>
-                      <TableCell className="text-center text-xs text-muted-foreground">{agency.packageCount || "-"}</TableCell>
-                      <TableCell className="text-center text-xs text-muted-foreground">{agency.flightCount || "-"}</TableCell>
-                      <TableCell className="text-center text-xs text-muted-foreground">{agency.hotelCount || "-"}</TableCell>
-                      <TableCell className="text-center text-xs text-muted-foreground">{agency.tourCount || "-"}</TableCell>
-                      <TableCell className="text-center text-xs text-muted-foreground">{agency.visaCount || "-"}</TableCell>
-                      <TableCell className="text-right font-semibold text-success">${agency.totalRevenue.toLocaleString()}</TableCell>
-                      <TableCell className="text-right text-coral">${Math.round(agency.commissionEarned).toLocaleString()}</TableCell>
-                      <TableCell className="text-right">
-                        <span className={agency.outstandingDebt > 0 ? "text-amber-600 font-semibold" : "text-muted-foreground"}>
-                          {agency.outstandingDebt > 0 ? `$${agency.outstandingDebt.toLocaleString()}` : "-"}
+                      <TableCell className="text-center">
+                        <Badge variant="secondary" className="font-bold bg-muted/60">{agency.totalBookings}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[10px] font-bold">{agency.confirmedBookings}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center text-[11px] font-bold text-muted-foreground">{agency.packageCount || "-"}</TableCell>
+                      <TableCell className="text-center text-[11px] font-bold text-muted-foreground">{agency.flightCount || "-"}</TableCell>
+                      <TableCell className="text-right font-bold text-foreground">${agency.totalRevenue.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-bold text-indigo-600">${Math.round(agency.commissionEarned).toLocaleString()}</TableCell>
+                      <TableCell className="text-right pr-8">
+                        <span className={cn("text-xs font-bold", agency.outstandingDebt > 0 ? "text-amber-600" : "text-emerald-600")}>
+                          {agency.outstandingDebt > 0 ? `$${agency.outstandingDebt.toLocaleString()}` : "Settled"}
                         </span>
                       </TableCell>
                     </TableRow>

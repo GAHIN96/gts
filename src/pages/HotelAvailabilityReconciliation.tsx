@@ -348,7 +348,7 @@ const HotelAvailabilityReconciliation = () => {
                           !r.match && "bg-destructive/5 hover:bg-destructive/10",
                         )}
                       >
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className="font-sans font-medium text-xs">
                           {format(parseISO(r.date), "EEE dd/MM/yyyy")}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">

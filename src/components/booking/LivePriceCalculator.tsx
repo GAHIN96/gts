@@ -50,7 +50,7 @@ export function LivePriceCalculator({
 
       {/* Formula display */}
       <div className="p-4 rounded-xl bg-[hsl(240,5%,96%)] mb-6">
-        <p className="text-xs font-mono text-[hsl(231,15%,46%)] text-center">
+        <p className="text-xs font-sans font-medium text-[hsl(231,15%,46%)] text-center">
           ((Base + Hotel) − Deductions) × Passengers
         </p>
       </div>

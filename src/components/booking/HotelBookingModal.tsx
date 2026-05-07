@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Hotel, MapPin, Star, CalendarIcon, Users, Bed, DollarSign } from "lucide-react";
+import { Hotel, MapPin, Star, CalendarIcon, Users, Bed, DollarSign, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,12 +18,13 @@ import { BookingPaymentStep } from "./BookingPaymentStep";
 import { PassengerDetailsForm, PassengerFormData } from "./PassengerDetailsForm";
 import { HotelRoomConfigurator, RoomConfig, evaluateRoom } from "./HotelRoomConfigurator";
 import type { Hotel as HotelType } from "@/hooks/useHotels";
-import { format, differenceInDays, addDays } from "date-fns";
+import { format, differenceInDays, addDays, startOfDay } from "date-fns";
 import { BookingCelebration } from "./BookingCelebration";
-import { pickRoomBand } from "@/lib/roomPricingTier";
+import { pickRoomBand, resolveRoomPrice } from "@/lib/roomPricingTier";
+import { getStayWindowRemaining, buildDayDetails } from "@/lib/hotelAvailability";
 import { useHotelAvailableDates } from "@/hooks/useHotelAvailableDates";
 import { useHotelBookings } from "@/hooks/useHotelBookings";
-import { getStayWindowRemaining } from "@/lib/hotelAvailability";
+// getStayWindowRemaining already imported above
 
 interface HotelBookingModalProps {
   open: boolean;
@@ -102,7 +103,7 @@ export function HotelBookingModal({
     }
   };
 
-  const activeRooms = (hotel?.hotel_rooms || []).filter((r: any) => r.is_active !== false);
+  const activeRooms = (hotel?.hotel_rooms || []).filter((r: any) => r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
   const roomCount = rooms.length;
   const cheapestRoom = activeRooms.length > 0
     ? activeRooms.reduce((min: any, r: any) =>
@@ -128,27 +129,47 @@ export function HotelBookingModal({
     : null;
   const isSoldOut = !!checkIn && !!checkOut && (availableInPeriod === 0 || availableInPeriod === null);
 
-  // Pricing band selection: AVAILABILITY-DRIVEN (matches admin default-rate
-  // tiers and the search card). The band is chosen by the rooms remaining in
-  // the inventory window covering the stay; falls back to the requested room
-  // count when no dates / no window is available.
-  const totalByType: Record<string, number> = {};
-  rooms.forEach((r) => {
-    const t = deriveRoomType(r);
-    totalByType[t] = (totalByType[t] || 0) + 1;
-  });
+  const dayDetails = buildDayDetails(hotelAvailableDates, hotelBookings, hotel?.id || "");
 
   const perRoomPricing = rooms.map((r) => {
     const type = deriveRoomType(r);
-    const selector = totalByType[type] || 1;
-    const band = pickRoomBand(activeRooms as any, type, selector, availableInPeriod);
-    const picked = band || cheapestRoom;
-    const price = (picked?.price_per_night ?? picked?.price_adult ?? hotel?.price_per_night ?? 0) as number;
-    return { type, displayType: picked?.room_type || type, price };
+    
+    let totalRoomPrice = 0;
+    const dailyLogs: string[] = [];
+    if (checkIn && checkOut && nights > 0) {
+      const specials = (hotel as any)?.hotel_special_prices || [];
+      
+      // Calculate bottleneck inventory for the stay
+      let bottleneckInventory = Number.MAX_SAFE_INTEGER;
+      for (let i = 0; i < nights; i++) {
+        const night = addDays(checkIn, i);
+        const dayKey = format(night, "yyyy-MM-dd");
+        const inv = dayDetails[dayKey]?.remaining ?? 0;
+        if (inv < bottleneckInventory) bottleneckInventory = inv;
+      }
+      if (bottleneckInventory === Number.MAX_SAFE_INTEGER) bottleneckInventory = 0;
+
+      for (let i = 0; i < nights; i++) {
+        const night = addDays(checkIn, i);
+        const resolved = resolveRoomPrice(activeRooms as any, type, bottleneckInventory, specials, night);
+        const priceForNight = resolved?.adult ?? hotel?.price_per_night ?? 0;
+        totalRoomPrice += priceForNight;
+        dailyLogs.push(`${format(night, "MMM dd")}: $${priceForNight} (Inv: ${bottleneckInventory})`);
+      }
+    } else {
+      // Fallback if no dates
+      const picked = pickRoomBand(activeRooms as any, type, 20);
+      totalRoomPrice = (picked?.price_adult ?? picked?.price_per_night ?? hotel?.price_per_night ?? 0) * Math.max(1, nights);
+      dailyLogs.push(`Fallback: $${totalRoomPrice / Math.max(1, nights)}/night`);
+    }
+
+    const avgPrice = nights > 0 ? totalRoomPrice / nights : totalRoomPrice;
+    return { type, displayType: type, price: avgPrice };
   });
 
   const displayRoomTypeName = perRoomPricing[0]?.displayType || "Double";
-  const pricePerNight = perRoomPricing[0]?.price ?? 0;
+  const pricePerNight = Math.round(perRoomPricing[0]?.price ?? 0);
+
 
   const totalPrice = perRoomPricing.reduce((sum, p) => sum + p.price * nights, 0);
   const totalChildren = (r: RoomConfig) => r.children6to12 + r.children2to6;
@@ -258,7 +279,7 @@ export function HotelBookingModal({
         onClose={() => { setShowCelebration(false); handleClose(); }}
       />
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="!max-w-none !w-auto !left-[var(--sidebar-width,16rem)] !right-0 !top-0 !translate-x-0 !translate-y-0 h-screen sm:rounded-none p-6 overflow-y-auto">
+        <DialogContent className="!max-w-none !w-auto !left-0 !right-0 !top-0 !translate-x-0 !translate-y-0 h-screen sm:rounded-none p-6 overflow-y-auto bg-slate-50">
           <UniversalVoucher
             details={{
               type: "hotel",
@@ -313,52 +334,56 @@ export function HotelBookingModal({
             </DialogHeader>
 
             {/* Hotel Summary Card */}
-            <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-2xl p-5 space-y-4 border border-primary/20">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-xl overflow-hidden bg-muted flex items-center justify-center">
+            <div className="bg-white rounded-2xl p-6 space-y-4 border border-border shadow-sm hover:shadow-md transition-shadow duration-300">
+              <div className="flex flex-col md:flex-row md:items-center gap-6">
+                <div className="h-24 w-24 rounded-2xl overflow-hidden bg-muted flex-shrink-0 border-2 border-primary/10">
                   {hotel.images?.[0] ? (
                     <img src={hotel.images[0]} alt={hotel.name} className="w-full h-full object-cover" />
                   ) : (
-                    <Hotel className="h-8 w-8 text-primary" />
+                    <Hotel className="h-10 w-10 text-primary/40" />
                   )}
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg">{hotel.name}</h3>
+                <div className="flex-1 space-y-1.5">
                   <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-2xl text-foreground tracking-tight">{hotel.name}</h3>
                     <div className="flex items-center gap-0.5">
                       {[...Array(hotel.star_rating || 3)].map((_, i) => (
-                        <Star key={i} className="h-3.5 w-3.5 text-gold fill-gold" />
+                        <Star key={i} className="h-4 w-4 text-amber-400 fill-amber-400" />
                       ))}
                     </div>
-                    <span className="text-sm text-muted-foreground">
-                      <MapPin className="h-3 w-3 inline mr-1" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-primary" />
                       {hotel.cities?.name}, {hotel.cities?.country}
+                    </span>
+                    <span className="text-sm font-medium text-primary bg-primary/5 px-2.5 py-0.5 rounded-full border border-primary/10">
+                      {displayRoomTypeName}
                     </span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-primary">${pricePerNight}</p>
-                  <p className="text-xs text-muted-foreground">per night</p>
-                  <p className="text-[10px] font-semibold text-primary/80 mt-0.5 uppercase tracking-wider">{displayRoomTypeName}</p>
+                <div className="flex flex-col items-start md:items-end justify-center bg-primary/5 p-4 rounded-xl border border-primary/10 min-w-[140px]">
+                  <p className="text-3xl font-bold text-primary tracking-tighter">${pricePerNight}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60">avg per night</p>
                 </div>
               </div>
 
               {/* Dates - hide when coming from search (already chosen) */}
               {!hasSearchParams && (
-                <div className="grid grid-cols-2 gap-4 pt-3 border-t border-primary/20">
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Check-in</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-border mt-2">
+                  <div className="space-y-2.5">
+                    <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.1em] ml-1">Check-in Date</label>
                     <Popover open={checkInOpen} onOpenChange={setCheckInOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
-                          className={cn("w-full justify-start text-left font-normal", !checkIn && "text-muted-foreground")}
+                          className={cn("w-full h-12 justify-start text-left font-medium rounded-xl border-border/60 hover:border-primary hover:bg-primary/5 transition-all", !checkIn && "text-muted-foreground")}
                         >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {checkIn ? format(checkIn, "dd/MM/yyyy") : "Select date"}
+                          <CalendarIcon className="mr-3 h-4 w-4 text-primary" />
+                          {checkIn ? format(checkIn, "PPP") : "Select check-in"}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
+                      <PopoverContent className="w-auto p-0 border-none shadow-2xl" align="start">
                         <Calendar
                           mode="single"
                           selected={checkIn}
@@ -369,26 +394,26 @@ export function HotelBookingModal({
                               setCheckOut(addDays(d, 1));
                             }
                           }}
-                          disabled={(date) => date < new Date()}
+                          disabled={(date) => startOfDay(date) < startOfDay(new Date())}
                           initialFocus
-                          className={cn("p-3 pointer-events-auto")}
+                          className={cn("p-4 bg-white rounded-2xl")}
                         />
                       </PopoverContent>
                     </Popover>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Check-out</label>
+                  <div className="space-y-2.5">
+                    <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.1em] ml-1">Check-out Date</label>
                     <Popover open={checkOutOpen} onOpenChange={setCheckOutOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
-                          className={cn("w-full justify-start text-left font-normal", !checkOut && "text-muted-foreground")}
+                          className={cn("w-full h-12 justify-start text-left font-medium rounded-xl border-border/60 hover:border-primary hover:bg-primary/5 transition-all", !checkOut && "text-muted-foreground")}
                         >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {checkOut ? format(checkOut, "dd/MM/yyyy") : "Select date"}
+                          <CalendarIcon className="mr-3 h-4 w-4 text-primary" />
+                          {checkOut ? format(checkOut, "PPP") : "Select check-out"}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
+                      <PopoverContent className="w-auto p-0 border-none shadow-2xl" align="start">
                         <Calendar
                           mode="single"
                           selected={checkOut}
@@ -396,9 +421,9 @@ export function HotelBookingModal({
                             setCheckOut(d);
                             setCheckOutOpen(false);
                           }}
-                          disabled={(date) => checkIn ? date <= checkIn : date < new Date()}
+                          disabled={(date) => checkIn ? startOfDay(date) <= startOfDay(checkIn) : startOfDay(date) < startOfDay(new Date())}
                           initialFocus
-                          className={cn("p-3 pointer-events-auto")}
+                          className={cn("p-4 bg-white rounded-2xl")}
                         />
                       </PopoverContent>
                     </Popover>
@@ -447,92 +472,90 @@ export function HotelBookingModal({
           </div>
 
           {/* Right Panel - Booking Summary Sidebar */}
-          <div className="hidden lg:block border-l border-border bg-muted/20 p-5">
-            <div className="sticky top-0 space-y-5">
-              <h4 className="font-bold text-base">Booking Summary</h4>
+          <div className="hidden lg:block border-l border-border bg-slate-50/50 p-6">
+            <div className="sticky top-0 space-y-6">
+              <h4 className="font-bold text-lg text-primary flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Stay Summary
+              </h4>
 
-              {/* Hotel image & info */}
-              <div className="rounded-xl overflow-hidden border border-border">
+              {/* Hotel mini-card */}
+              <div className="rounded-2xl overflow-hidden border border-border bg-white shadow-sm ring-1 ring-black/[0.02]">
                 {hotel.images?.[0] ? (
                   <img src={hotel.images[0]} alt={hotel.name} className="w-full h-32 object-cover" />
                 ) : (
-                  <div className="w-full h-32 bg-muted flex items-center justify-center">
-                    <Hotel className="h-10 w-10 text-muted-foreground" />
+                  <div className="w-full h-32 bg-slate-100 flex items-center justify-center">
+                    <Hotel className="h-10 w-10 text-slate-300" />
                   </div>
                 )}
-                <div className="p-3 space-y-1">
-                  <h5 className="font-semibold text-sm">{hotel.name}</h5>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
+                <div className="p-4 space-y-1.5">
+                  <h5 className="font-bold text-sm text-slate-800 leading-tight">{hotel.name}</h5>
+                  <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                    <MapPin className="h-3 w-3 text-primary" />
                     {hotel.cities?.name}, {hotel.cities?.country}
                   </p>
-                  <div className="flex items-center gap-0.5">
-                    {[...Array(hotel.star_rating || 3)].map((_, i) => (
-                      <Star key={i} className="h-3 w-3 text-gold fill-gold" />
-                    ))}
-                  </div>
                 </div>
               </div>
 
-              {/* Dates */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Check-in</span>
-                  <span className="font-medium">{checkIn ? format(checkIn, "dd/MM/yyyy") : "—"}</span>
+              {/* Dates & Duration */}
+              <div className="space-y-3 bg-white p-4 rounded-2xl border border-border shadow-sm">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">Check-in</span>
+                  <span className="font-bold text-slate-800">{checkIn ? format(checkIn, "MMM dd, yyyy") : "—"}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Check-out</span>
-                  <span className="font-medium">{checkOut ? format(checkOut, "dd/MM/yyyy") : "—"}</span>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">Check-out</span>
+                  <span className="font-bold text-slate-800">{checkOut ? format(checkOut, "MMM dd, yyyy") : "—"}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Duration</span>
-                  <span className="font-medium">{nights} night{nights !== 1 ? 's' : ''}</span>
+                <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-medium">Duration</span>
+                  <span className="font-bold text-primary">{nights} night{nights !== 1 ? 's' : ''}</span>
                 </div>
               </div>
 
-              {/* Room breakdown */}
-              <div className="border-t border-border pt-3 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rooms</p>
-                {rooms.map((room, idx) => {
-                  const ch = room.children6to12 + room.children2to6;
-                  return (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Room {idx + 1}</span>
-                      <span className="font-medium">
-                        {room.adults} Adult{room.adults > 1 ? 's' : ''}
-                        {ch > 0 && `, ${ch} Child${ch > 1 ? 'ren' : ''}`}
-                        {room.infants > 0 && `, ${room.infants} Infant${room.infants > 1 ? 's' : ''}`}
-                      </span>
+              {/* Room & Price breakdown */}
+              <div className="space-y-4 bg-white p-4 rounded-2xl border border-border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inventory Details</p>
+                  <Badge variant="outline" className="h-5 rounded-full px-2 border-primary/20 bg-primary/5 text-primary text-[10px] font-bold">
+                    {roomCount} {roomCount === 1 ? 'Room' : 'Rooms'}
+                  </Badge>
+                </div>
+                
+                <div className="space-y-3">
+                  {perRoomPricing.map((p, idx) => (
+                    <div key={idx} className="flex flex-col gap-1 pb-3 last:pb-0 border-b border-slate-50 last:border-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-700">Room {idx + 1}</span>
+                        <span className="text-xs font-bold text-slate-800">${Math.round(p.price * nights)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-tighter">{p.displayType}</span>
+                        <span className="text-[10px] text-slate-400 font-medium">${Math.round(p.price)} × {nights}n</span>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-
-              {/* Price breakdown */}
-              <div className="border-t border-border pt-3 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Price</p>
-                {perRoomPricing.map((p, idx) => (
-                  <div key={idx} className="flex justify-between text-sm gap-2">
-                    <span className="text-muted-foreground flex items-center gap-1.5 min-w-0">
-                      Room {idx + 1}
-                      <Badge variant="outline" className="text-[9px] font-medium border-primary/30 text-primary h-4 px-1.5 truncate">
-                        {p.displayType}
-                      </Badge>
-                    </span>
-                    <span className="font-medium whitespace-nowrap">${p.price} × {nights} night{nights !== 1 ? 's' : ''}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Total */}
-              <div className="border-t-2 border-primary/30 pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-lg">Total</span>
-                  <span className="text-2xl font-bold text-primary">${totalPrice}</span>
+                  ))}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {nights} night{nights !== 1 ? 's' : ''} across {roomCount} room{roomCount !== 1 ? 's' : ''}
-                </p>
+              </div>
+
+              {/* Total Card */}
+              <div className="bg-primary rounded-2xl p-6 text-white shadow-lg shadow-primary/20 relative overflow-hidden group">
+                {/* Decorative circle */}
+                <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+                
+                <div className="relative z-10 space-y-1">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70">Total Amount</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-bold">${totalPrice}</span>
+                    <span className="text-sm font-medium text-white/60">USD</span>
+                  </div>
+                </div>
+                <div className="relative z-10 mt-4 pt-4 border-t border-white/10">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-white/80">
+                    <Users className="h-3 w-3" />
+                    {totalGuests} GUESTS TOTAL
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -33,7 +33,7 @@ import { toast } from "sonner";
 import { useEffect } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 
 const dealSchema = z.object({
@@ -297,7 +297,7 @@ export function HotelDealForm({ open, onOpenChange, deal }: HotelDealFormProps) 
                         mode="single"
                         selected={field.value || undefined}
                         onSelect={field.onChange}
-                        disabled={(date) => date < new Date()}
+                        disabled={(date) => startOfDay(date) < startOfDay(new Date())}
                         initialFocus
                       />
                     </PopoverContent>

@@ -8,7 +8,10 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && npx netlify deploy --prod --dir=dist",
+    "deploy:ftp": "npm run build && node scripts/deploy-ftp.js",
+    "deploy:netlify": "npm run build && npx netlify deploy --prod --dir=dist"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -84,11 +87,12 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "autoprefixer": "^10.4.21",
+    "basic-ftp": "^5.3.1",
+    "dotenv": "^17.4.2",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
-    "lovable-tagger": "^1.1.13",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",

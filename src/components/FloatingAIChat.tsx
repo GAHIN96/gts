@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
+import { useAuth } from "@/contexts/AuthContext";
+
 type Message = {
   role: "user" | "assistant";
   content: string;
@@ -34,6 +36,7 @@ const TEAMS = [
 ];
 
 export function FloatingAIChat() {
+  const { role } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [view, setView] = useState<PanelView>("menu");
   const [isMinimized, setIsMinimized] = useState(false);
@@ -47,6 +50,8 @@ export function FloatingAIChat() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  if (role !== "agency") return null;
 
   useEffect(() => {
     if (scrollRef.current) {

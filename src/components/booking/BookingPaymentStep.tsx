@@ -437,7 +437,7 @@ export function BookingPaymentStep({
                   Complete Payment
                 </h3>
                 <p className="text-xs sm:text-sm text-primary-foreground/60 font-light mt-0.5 truncate">
-                  Booking <span className="font-mono font-medium text-primary-foreground/80">#{bookingNumber}</span>
+                  Booking <span className="font-sans font-medium font-medium text-primary-foreground/80">#{bookingNumber}</span>
                 </p>
               </div>
             </div>
@@ -737,7 +737,7 @@ export function BookingPaymentStep({
                       value={cardNumber}
                       onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                       maxLength={19}
-                      className="h-10 rounded-xl border-border/50 bg-background/50 focus:bg-background font-mono tracking-widest pr-16"
+                      className="h-10 rounded-xl border-border/50 bg-background/50 focus:bg-background font-sans font-medium tracking-widest pr-16"
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
                       <PaymentLogo method={selectedMethod as PaymentMethodValue} />
@@ -754,7 +754,7 @@ export function BookingPaymentStep({
                       value={cardExpiry}
                       onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
                       maxLength={5}
-                      className="h-10 rounded-xl border-border/50 bg-background/50 focus:bg-background font-mono tracking-widest"
+                      className="h-10 rounded-xl border-border/50 bg-background/50 focus:bg-background font-sans font-medium tracking-widest"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -766,7 +766,7 @@ export function BookingPaymentStep({
                         value={cardCvv}
                         onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
                         maxLength={4}
-                        className="h-10 rounded-xl border-border/50 bg-background/50 focus:bg-background font-mono tracking-widest pr-10"
+                        className="h-10 rounded-xl border-border/50 bg-background/50 focus:bg-background font-sans font-medium tracking-widest pr-10"
                       />
                       <button
                         type="button"

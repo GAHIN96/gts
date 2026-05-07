@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { MapPin, TrendingUp, Users, DollarSign, FileSpreadsheet, FileText } from "lucide-react";
+import { MapPin, TrendingUp, Users, DollarSign, FileSpreadsheet, FileText, Globe } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,7 @@ import { type Booking } from "@/hooks/useBookings";
 import { exportToExcel } from "@/utils/excelExport";
 import jsPDF from "jspdf";
 import { format } from "date-fns";
-
-const COLORS_STATIC = ['hsl(231, 70%, 30%)', 'hsl(6, 100%, 69%)', 'hsl(45, 100%, 51%)', 'hsl(142, 76%, 36%)', 'hsl(270, 70%, 60%)'];
+import { cn } from "@/lib/utils";
 
 interface DestinationStats {
   name: string;
@@ -30,12 +29,12 @@ interface DestinationStats {
 }
 
 function getDestination(b: Booking): string {
-  if (b.booking_type === "package") return b.package_departures?.group_packages?.cities?.name || "Unknown";
-  if (b.booking_type === "flight") return b.flights?.arrival_city || "Unknown";
-  if (b.booking_type === "hotel") return b.hotels?.cities?.name || "Unknown";
-  if (b.booking_type === "tour") return b.tours?.cities?.name || "Unknown";
-  if (b.booking_type === "visa") return b.visas?.country || "Unknown";
-  return "Other";
+  if (b.booking_type === "package") return b.package_departures?.group_packages?.cities?.name || "Global Destination";
+  if (b.booking_type === "flight") return b.flights?.arrival_city || "Global Destination";
+  if (b.booking_type === "hotel") return b.hotels?.cities?.name || "Global Destination";
+  if (b.booking_type === "tour") return b.tours?.cities?.name || "Global Destination";
+  if (b.booking_type === "visa") return b.visas?.country || "Global Destination";
+  return "Operational Zone";
 }
 
 export function DestinationsReport({ bookings }: { bookings: Booking[] }) {
@@ -73,7 +72,7 @@ export function DestinationsReport({ bookings }: { bookings: Booking[] }) {
     bookings: d.bookings,
   }));
 
-  const exportExcel = () => {
+  const handleExportExcel = () => {
     const rows = destinationStats.map((d, i) => ({
       "#": i + 1,
       Destination: d.name,
@@ -90,139 +89,147 @@ export function DestinationsReport({ bookings }: { bookings: Booking[] }) {
     exportToExcel(rows, "Destinations", `Destinations_Report_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
   };
 
-  const exportPDF = () => {
+  const handleExportPDF = () => {
     const pdf = new jsPDF("l", "mm", "a4");
-    pdf.setFontSize(16);
-    pdf.text("Destinations Report", 14, 18);
+    pdf.setFontSize(16); pdf.text("Regional Performance Report", 14, 18);
     pdf.setFontSize(9);
-    pdf.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")} | ${destinationStats.length} destinations | Revenue: $${totalRevenue.toLocaleString()}`, 14, 26);
-    let y = 36;
-    const headers = ["#", "Destination", "Bookings", "Pax", "Revenue", "Confirmed", "Pkg", "Flt", "Htl", "Tour", "Visa"];
-    const colW = [10, 35, 20, 15, 25, 25, 15, 15, 15, 15, 15];
-    pdf.setFillColor(26, 35, 126);
-    pdf.rect(14, y - 5, 205, 8, "F");
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(7);
-    let x = 14;
-    headers.forEach((h, i) => { pdf.text(h, x + 1, y); x += colW[i]; });
-    y += 6;
-    pdf.setTextColor(0, 0, 0);
-    destinationStats.slice(0, 30).forEach((d, idx) => {
-      if (y > 190) { pdf.addPage(); y = 20; }
-      if (idx % 2 === 0) { pdf.setFillColor(245, 245, 245); pdf.rect(14, y - 4, 205, 7, "F"); }
-      const row = [String(idx + 1), d.name.substring(0, 20), String(d.bookings), String(d.passengers), `$${d.revenue.toLocaleString()}`, `$${d.confirmedRevenue.toLocaleString()}`, String(d.packageCount), String(d.flightCount), String(d.hotelCount), String(d.tourCount), String(d.visaCount)];
-      x = 14;
-      row.forEach((c, i) => { pdf.text(c, x + 1, y); x += colW[i]; });
-      y += 7;
-    });
+    pdf.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")} | ${destinationStats.length} regions | Revenue: $${totalRevenue.toLocaleString()}`, 14, 26);
     pdf.save(`Destinations_Report_${format(new Date(), "yyyy-MM-dd")}.pdf`);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Destinations</p><p className="text-xl font-bold">{destinationStats.length}</p></div><div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center"><MapPin className="h-5 w-5 text-primary" /></div></div></CardContent></Card>
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Total Revenue</p><p className="text-xl font-bold">${totalRevenue.toLocaleString()}</p></div><div className="h-10 w-10 rounded-xl bg-success/10 flex items-center justify-center"><DollarSign className="h-5 w-5 text-success" /></div></div></CardContent></Card>
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Total Bookings</p><p className="text-xl font-bold">{totalBookings}</p></div><div className="h-10 w-10 rounded-xl bg-gold/10 flex items-center justify-center"><TrendingUp className="h-5 w-5 text-gold" /></div></div></CardContent></Card>
-        <Card className="shadow-card"><CardContent className="p-5"><div className="flex items-center justify-between"><div><p className="text-xs text-muted-foreground">Total Passengers</p><p className="text-xl font-bold">{totalPassengers}</p></div><div className="h-10 w-10 rounded-xl bg-coral/10 flex items-center justify-center"><Users className="h-5 w-5 text-coral" /></div></div></CardContent></Card>
+    <div className="space-y-8 animate-fade-in">
+      {/* ═══════ REGIONAL ANALYTICS HEADER ═══════ */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-card p-8 rounded-3xl border shadow-sm relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-blue-500/5 pointer-events-none" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-2">
+            <Badge variant="secondary" className="bg-primary/10 text-primary border-none font-bold text-[10px] uppercase tracking-wider px-2">Location Intelligence</Badge>
+            <div className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Global Reach</span>
+          </div>
+          <h2 className="text-3xl font-bold text-foreground tracking-tight">Regional Destination Analytics</h2>
+          <p className="text-sm text-muted-foreground mt-1 font-medium">Performance breakdown and revenue concentration by destination and region.</p>
+        </div>
+
+        <div className="flex items-center gap-3 relative z-10">
+          <Button onClick={handleExportExcel} size="lg" className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md">
+            <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
+          </Button>
+          <Button variant="outline" size="lg" onClick={handleExportPDF} className="rounded-2xl border-muted bg-card font-bold text-xs uppercase tracking-wider shadow-sm">
+            <FileText className="h-4 w-4 mr-2 text-blue-600" /> PDF
+          </Button>
+        </div>
       </div>
 
-      {/* Revenue Bar Chart */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" />Top Destinations by Revenue</CardTitle>
-          <CardDescription>Revenue and booking volume per destination</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {chartData.length === 0 ? (
-            <p className="text-center py-12 text-muted-foreground">No destination data available</p>
-          ) : (
-            <div className="h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="name" fontSize={11} />
-                  <YAxis fontSize={11} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: "8px", border: "1px solid hsl(var(--border))" }}
-                    formatter={(value: number, name: string) => [
-                      name === "revenue" ? `$${value.toLocaleString()}` : value,
-                      name === "revenue" ? "Revenue" : "Bookings",
-                    ]}
-                    labelFormatter={(_, p) => p[0]?.payload?.fullName || ""}
-                  />
-                  <Bar dataKey="revenue" name="revenue" fill="hsl(231, 70%, 30%)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Destination KPI Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { label: "Total Revenue", value: `$${totalRevenue.toLocaleString()}`, icon: Globe, color: "text-blue-600", bg: "bg-blue-50" },
+          { label: "Active Destinations", value: destinationStats.length.toString(), icon: MapPin, color: "text-indigo-600", bg: "bg-indigo-50" },
+          { label: "Total Bookings", value: totalBookings.toString(), icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "Total Passengers", value: totalPassengers.toString(), icon: Users, color: "text-amber-600", bg: "bg-amber-50" },
+        ].map((stat, i) => (
+          <Card key={i} className="border-none shadow-sm bg-card hover:shadow-md transition-all duration-300 group">
+            <CardContent className="p-8">
+              <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center mb-6 transition-transform group-hover:scale-110", stat.bg)}>
+                <stat.icon className={cn("h-6 w-6", stat.color)} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{stat.label}</p>
+                <p className="text-3xl font-bold text-foreground tracking-tight tabular-nums">{stat.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-      {/* Detailed Table */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* Value Concentration Chart */}
+      <Card className="border-none shadow-sm overflow-hidden">
+        <CardHeader className="p-8 border-b bg-muted/30">
+          <div className="flex items-center gap-3">
+            <TrendingUp className="h-5 w-5 text-primary" />
             <div>
-              <CardTitle>Destination Performance Details</CardTitle>
-              <CardDescription>{destinationStats.length} destinations with service breakdown</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" className="bg-success hover:bg-success/90" onClick={exportExcel} disabled={destinationStats.length === 0}><FileSpreadsheet className="h-4 w-4 mr-1" /> Excel</Button>
-              <Button size="sm" variant="outline" onClick={exportPDF} disabled={destinationStats.length === 0}><FileText className="h-4 w-4 mr-1" /> PDF</Button>
+              <CardTitle className="text-lg font-bold uppercase tracking-tight">Destination Revenue Distribution</CardTitle>
+              <CardDescription className="text-xs font-medium uppercase tracking-wider">Top regions ranked by total revenue output</CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          {destinationStats.length === 0 ? (
-            <p className="text-center py-12 text-muted-foreground">No destination data</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">#</TableHead>
-                    <TableHead>Destination</TableHead>
-                    <TableHead className="text-center">Bookings</TableHead>
-                    <TableHead className="text-center">Pax</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Confirmed</TableHead>
-                    <TableHead className="text-center">Pkg</TableHead>
-                    <TableHead className="text-center">Flt</TableHead>
-                    <TableHead className="text-center">Htl</TableHead>
-                    <TableHead className="text-center">Tour</TableHead>
-                    <TableHead className="text-center">Visa</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {destinationStats.map((d, i) => (
-                    <TableRow key={d.name}>
-                      <TableCell>
-                        {i < 3 ? (
-                          <Badge className={i === 0 ? "bg-gold text-white" : i === 1 ? "bg-slate-400 text-white" : "bg-amber-600 text-white"}>
-                            {i + 1}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">{i + 1}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium">{d.name}</TableCell>
-                      <TableCell className="text-center"><Badge variant="outline">{d.bookings}</Badge></TableCell>
-                      <TableCell className="text-center">{d.passengers}</TableCell>
-                      <TableCell className="text-right font-semibold">${d.revenue.toLocaleString()}</TableCell>
-                      <TableCell className="text-right text-success">${d.confirmedRevenue.toLocaleString()}</TableCell>
-                      <TableCell className="text-center text-muted-foreground">{d.packageCount || "-"}</TableCell>
-                      <TableCell className="text-center text-muted-foreground">{d.flightCount || "-"}</TableCell>
-                      <TableCell className="text-center text-muted-foreground">{d.hotelCount || "-"}</TableCell>
-                      <TableCell className="text-center text-muted-foreground">{d.tourCount || "-"}</TableCell>
-                      <TableCell className="text-center text-muted-foreground">{d.visaCount || "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        <CardContent className="p-8">
+          <div className="h-[400px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" fontSize={11} fontWeight={600} tick={{ fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                <YAxis fontSize={11} fontWeight={600} tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} axisLine={false} tickLine={false} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
+                  formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                />
+                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Regional Performance Details Table */}
+      <Card className="border-none shadow-sm overflow-hidden">
+        <CardHeader className="p-8 bg-muted/30 border-b">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <CardTitle className="text-xl font-bold uppercase tracking-tight">Regional Performance Ledger</CardTitle>
+              <CardDescription className="text-sm font-medium">Comparative analysis of destination-specific performance metrics</CardDescription>
             </div>
-          )}
+            <Button variant="outline" size="sm" onClick={handleExportExcel} className="bg-card font-bold text-xs uppercase tracking-wider" disabled={destinationStats.length === 0}>
+              <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" /> Excel
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow className="border-none hover:bg-transparent">
+                  <TableHead className="w-20 text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground px-8">Rank</TableHead>
+                  <TableHead className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Destination Region</TableHead>
+                  <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Bookings</TableHead>
+                  <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Pax</TableHead>
+                  <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground">PKG</TableHead>
+                  <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground">FLT</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Total Revenue</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground pr-8">Market Share</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {destinationStats.map((d, index) => (
+                  <TableRow key={d.name} className="hover:bg-muted/30 transition-colors border-b last:border-none group">
+                    <TableCell className="text-center px-8">
+                      <span className={`inline-flex items-center justify-center h-7 w-7 rounded-lg text-xs font-bold ${index < 3 ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground"}`}>
+                        {index + 1}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-bold text-foreground text-sm uppercase">{d.name}</span>
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-foreground/70">{d.bookings}</TableCell>
+                    <TableCell className="text-center font-bold text-muted-foreground/60">{d.passengers}</TableCell>
+                    <TableCell className="text-center text-[11px] font-bold text-muted-foreground">{d.packageCount || "-"}</TableCell>
+                    <TableCell className="text-center text-[11px] font-bold text-muted-foreground">{d.flightCount || "-"}</TableCell>
+                    <TableCell className="text-right font-bold text-foreground tracking-tight">${d.revenue.toLocaleString()}</TableCell>
+                    <TableCell className="text-right pr-8">
+                      <div className="flex items-center justify-end gap-3">
+                        <span className="text-[11px] font-bold text-muted-foreground">{Math.round((d.revenue / totalRevenue) * 100)}%</span>
+                        <div className="h-2 w-20 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: `${(d.revenue / destinationStats[0].revenue) * 100}%` }} />
+                        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

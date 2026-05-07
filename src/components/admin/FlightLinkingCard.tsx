@@ -115,7 +115,7 @@ export function FlightLinkingCard({
                 <div className="font-medium">
                   {flight.departure_city}
                   {(flight as any).departure_airport_code && (
-                    <span className="text-xs text-muted-foreground ml-1 font-mono">
+                    <span className="text-xs text-muted-foreground ml-1 font-sans font-medium">
                       ({(flight as any).departure_airport_code})
                     </span>
                   )}
@@ -140,7 +140,7 @@ export function FlightLinkingCard({
                 <div className="font-medium">
                   {flight.arrival_city}
                   {(flight as any).arrival_airport_code && (
-                    <span className="text-xs text-muted-foreground ml-1 font-mono">
+                    <span className="text-xs text-muted-foreground ml-1 font-sans font-medium">
                       ({(flight as any).arrival_airport_code})
                     </span>
                   )}

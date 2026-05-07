@@ -1199,7 +1199,7 @@ const BookPackage = () => {
                     <div className="pt-2">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Total Price</p>
                       <div className="flex items-baseline justify-between">
-                        <span className="text-3xl font-black text-foreground">${(adjustedBasePrice + hotelPriceAdjustment).toLocaleString()}</span>
+                        <span className="text-3xl font-bold text-foreground">${(adjustedBasePrice + hotelPriceAdjustment).toLocaleString()}</span>
                         <span className="text-xs text-muted-foreground">Starting from ${adjustedBasePrice}/pp</span>
                       </div>
                     </div>

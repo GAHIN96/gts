@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { format, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay } from "date-fns";
+import { format, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay, startOfDay } from "date-fns";
 import { Calendar, Plane, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -94,7 +94,7 @@ export function FlightAvailabilityCalendar({
             const flightsOnDate = getFlightsForDate(day);
             const status = getAvailabilityStatus(flightsOnDate);
             const isToday = isSameDay(day, new Date());
-            const isPast = day < new Date();
+            const isPast = startOfDay(day) < startOfDay(new Date());
             
             return (
               <button

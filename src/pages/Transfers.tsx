@@ -375,7 +375,24 @@ const Transfers = () => {
                           <div className="flex items-center gap-2">
                             <Button variant="navy" onClick={() => handleBook(transfer)} className="rounded-xl gap-1.5"><ShoppingCart className="h-4 w-4" />Book Now</Button>
                             {isAdmin && (
-                              <Button variant="navy-outline" size="sm" onClick={() => handleEdit(transfer)} className="rounded-xl"><Pencil className="h-4 w-4" /></Button>
+                              <div className="flex gap-2">
+                                <Button variant="navy-outline" size="sm" onClick={() => handleEdit(transfer)} className="rounded-xl"><Pencil className="h-4 w-4" /></Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="outline" size="sm" className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Transfer</AlertDialogTitle>
+                                      <AlertDialogDescription>Are you sure you want to delete "{transfer.name}"?</AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDelete(transfer.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
                             )}
                           </div>
                         </div>

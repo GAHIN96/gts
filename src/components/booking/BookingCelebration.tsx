@@ -131,7 +131,7 @@ export function BookingCelebration({
               <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
                 Booking Reference
               </p>
-              <p className="text-xl font-mono font-bold text-primary tracking-wider">
+              <p className="text-xl font-sans font-medium font-bold text-primary tracking-wider">
                 {bookingNumber}
               </p>
             </div>

@@ -202,7 +202,7 @@ export default function AuditLogs() {
               ) : (
                 data.logs.map((log) => (
                   <TableRow key={log.id} className="hover:bg-muted/50">
-                    <TableCell className="text-[11px] text-muted-foreground font-mono">
+                    <TableCell className="text-[11px] text-muted-foreground font-sans font-medium">
                       {format(new Date(log.created_at), "yyyy-MM-dd HH:mm:ss")}
                     </TableCell>
                     <TableCell>{getEventBadge(log.event_type)}</TableCell>
@@ -285,7 +285,7 @@ export default function AuditLogs() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wider">Timestamp</p>
-                    <p className="text-xs font-mono">
+                    <p className="text-xs font-sans font-medium">
                       {format(new Date(selectedLog.created_at), "yyyy-MM-dd HH:mm:ss")}
                     </p>
                   </div>
@@ -303,11 +303,11 @@ export default function AuditLogs() {
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wider">Table</p>
-                    <p className="text-xs font-mono">{selectedLog.table_name}</p>
+                    <p className="text-xs font-sans font-medium">{selectedLog.table_name}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wider">Record ID</p>
-                    <p className="text-[10px] font-mono break-all text-muted-foreground">{selectedLog.record_id || "—"}</p>
+                    <p className="text-[10px] font-sans font-medium break-all text-muted-foreground">{selectedLog.record_id || "—"}</p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wider">Entity</p>
@@ -318,7 +318,7 @@ export default function AuditLogs() {
                 {selectedLog.old_data && (
                   <div>
                     <p className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wider">Previous Data</p>
-                    <pre className="text-[11px] bg-muted p-2.5 rounded-lg overflow-auto max-h-40 font-mono">
+                    <pre className="text-[11px] bg-muted p-2.5 rounded-lg overflow-auto max-h-40 font-sans font-medium">
                       {JSON.stringify(selectedLog.old_data, null, 2)}
                     </pre>
                   </div>
@@ -326,7 +326,7 @@ export default function AuditLogs() {
                 {selectedLog.new_data && (
                   <div>
                     <p className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wider">New Data</p>
-                    <pre className="text-[11px] bg-muted p-2.5 rounded-lg overflow-auto max-h-40 font-mono">
+                    <pre className="text-[11px] bg-muted p-2.5 rounded-lg overflow-auto max-h-40 font-sans font-medium">
                       {JSON.stringify(selectedLog.new_data, null, 2)}
                     </pre>
                   </div>

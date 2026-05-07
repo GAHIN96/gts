@@ -120,7 +120,7 @@ export default function CustomGroupManage() {
 
                     return (
                       <TableRow key={b.id}>
-                        <TableCell className="font-mono text-sm">{b.booking_number}</TableCell>
+                        <TableCell className="font-sans font-medium text-sm">{b.booking_number}</TableCell>
                         <TableCell>
                           <div className="text-sm">
                             <p className="font-medium text-foreground">{b.profiles?.full_name || "—"}</p>

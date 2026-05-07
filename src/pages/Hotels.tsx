@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
 import { ModulePageHeader } from "@/components/ui/module-page-header";
 import { useSearchParams } from "react-router-dom";
-import { 
-  Hotel, 
-  Plus, 
+import {
+  Hotel,
+  Plus,
   MapPin,
   Star,
   Wifi,
@@ -121,7 +121,7 @@ const Hotels = () => {
     discountedPrice: deal.discounted_price,
     discountPercent: deal.discount_percent,
     image: deal.image_url || "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&h=400&fit=crop",
-    expiresIn: deal.expires_at 
+    expiresIn: deal.expires_at
       ? `${Math.max(0, differenceInDays(new Date(deal.expires_at), new Date()))} days left`
       : undefined,
     featured: deal.is_featured,
@@ -163,8 +163,8 @@ const Hotels = () => {
   return (
     <div className="space-y-6">
       {isManageView ? (
-        <HotelForm 
-          open={formOpen} 
+        <HotelForm
+          open={formOpen}
           onOpenChange={(open) => {
             setFormOpen(open);
             if (!open) setEditingHotel(null);
@@ -173,8 +173,8 @@ const Hotels = () => {
           inline
         />
       ) : (
-        <HotelForm 
-          open={formOpen} 
+        <HotelForm
+          open={formOpen}
           onOpenChange={(open) => {
             setFormOpen(open);
             if (!open) setEditingHotel(null);
@@ -229,14 +229,14 @@ const Hotels = () => {
       {/* Search + Hero - hidden in manage view */}
       {!isManageView && (
         <>
-          <HotelSearchSection 
+          <HotelSearchSection
             onHotelSelect={(hotel, searchParams) => handleBook(hotel, searchParams)}
           />
 
           <div className="relative rounded-2xl overflow-hidden h-[200px] md:h-[220px]">
-            <ImageCarousel 
-              images={heroImages} 
-              autoPlay 
+            <ImageCarousel
+              images={heroImages}
+              autoPlay
               interval={5000}
               aspectRatio="hero"
               className="h-full"
@@ -259,29 +259,15 @@ const Hotels = () => {
             )}
           </div>
 
-          {/* Promo Slideshow - hotels reklam, auto-rotating */}
-          {promoImages.length > 0 && (
-            <div className="relative rounded-2xl overflow-hidden h-[160px] md:h-[200px] shadow-card">
-              <ImageCarousel
-                images={promoImages}
-                autoPlay
-                interval={4000}
-                aspectRatio="hero"
-                className="h-full"
-                showDots={promoImages.length > 1}
-                showArrows={promoImages.length > 1}
-                overlay={false}
-              />
-            </div>
-          )}
+
 
           {/* Hotel Deals carousel - shown below the hero banner */}
-          <SpecialOffersSection 
-            title="Hotel Deals" 
+          <SpecialOffersSection
+            title="Hotel Deals"
             offers={hotelOffers}
             onViewOffer={handleViewOffer}
           />
-          
+
         </>
       )}
 
@@ -310,14 +296,14 @@ const Hotels = () => {
               <>
                 <Table>
                   <TableHeader>
-                     <TableRow>
+                    <TableRow>
                       <TableHead className="w-12">#</TableHead>
                       <TableHead>Hotel</TableHead>
                       <TableHead>Location</TableHead>
                       <TableHead>Stars</TableHead>
                       <TableHead>Default Prices</TableHead>
                       <TableHead>Special Prices</TableHead>
-                      <TableHead>Price/Night</TableHead>
+
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -358,7 +344,7 @@ const Hotels = () => {
                             <Badge variant="secondary" className="text-[10px]">None</Badge>
                           )}
                         </TableCell>
-                        <TableCell><span className="font-semibold text-primary">${hotel.price_per_night || 0}</span></TableCell>
+
                         <TableCell>
                           <Badge variant={hotel.is_active ? "default" : "secondary"}>
                             {hotel.is_active ? "Active" : "Inactive"}

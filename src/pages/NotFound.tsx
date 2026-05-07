@@ -32,7 +32,7 @@ const NotFound = () => {
 
       <div className="text-center relative z-10 px-6">
         {/* Large 404 */}
-        <h1 className="text-[140px] sm:text-[180px] font-black leading-none tracking-tighter text-gradient-navy opacity-90 select-none">
+        <h1 className="text-[140px] sm:text-[180px] font-bold leading-none tracking-tighter text-gradient-navy opacity-90 select-none">
           404
         </h1>
 

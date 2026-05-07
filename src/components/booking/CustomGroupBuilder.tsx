@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef } from "react";
 import customGroupHeroImg from "@/assets/custom-group-hero.jpg";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { format, differenceInDays, parseISO, isSameDay, getDay } from "date-fns";
+import { format, differenceInDays, parseISO, isSameDay, getDay, startOfDay } from "date-fns";
 import {
   Calendar as CalendarIcon, Plane, Building, ArrowLeftRight, Check, ArrowRight, ArrowLeft,
   Star, Clock, Package2, Sparkles, MapPin, Shield, Car, Receipt, CircleDot, Tag,
@@ -19,13 +19,27 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { useCities } from "@/hooks/useCities";
 import { useFlights, type Flight } from "@/hooks/useFlights";
 import { useHotels, type Hotel } from "@/hooks/useHotels";
 import { useTransfers, type Transfer } from "@/hooks/useTransfers";
 import { useCustomGroupSettings } from "@/hooks/useCustomGroupSettings";
+import { useHotelAvailableDates } from "@/hooks/useHotelAvailableDates";
+import { useHotelBookings } from "@/hooks/useHotelBookings";
+import { getStayWindowRemaining } from "@/lib/hotelAvailability";
+import { pickRoomBand } from "@/lib/roomPricingTier";
+import { addDays } from "date-fns";
 import type { Tables } from "@/integrations/supabase/types";
+
+import promoFlights1 from "@/assets/promo-flights-1.jpg";
+import promoFlights2 from "@/assets/promo-flights-2.jpg";
+import promoFlights3 from "@/assets/promo-flights-3.jpg";
+import promoHotels1 from "@/assets/promo-hotels-1.jpg";
+import promoHotels2 from "@/assets/promo-hotels-2.jpg";
+import promoHotels3 from "@/assets/promo-hotels-3.jpg";
+import { ImageCarousel } from "@/components/ui/image-carousel";
 
 type HotelRoom = Tables<"hotel_rooms">;
 
@@ -59,7 +73,7 @@ function getRoomTypeLabel(room: GuestRoom): string {
   if (totalAdults === 2 && children === 1 && children6 === 0) return "Double + Extra Bed";
   if (totalAdults === 2 && children === 1 && children6 === 1) return "Double + Extra Bed";
   if (totalAdults === 3 && children === 0 && children6 === 0) return "Triple";
-  return "Custom";
+  return "Double";
 }
 
 /** Max limits per room */
@@ -82,20 +96,20 @@ function isValidRoomConfig(room: GuestRoom): boolean {
   return true;
 }
 
-const ROOM_TYPES = ["Single", "Double", "Triple"];
+const ROOM_TYPES = ["Single", "Double", "Double + Extra Bed", "Triple"];
 
 const GUEST_TYPES = ["Adult", "Child (2-12)", "Child (2-6)", "Infant"];
 const DEFAULT_ROOM_FOR_GUEST: Record<string, string> = {
   "Adult": "Single",
-  "Child (2-12)": "Extra Bed",
-  "Child (2-6)": "Without-Bed",
-  "Infant": "Infant",
+  "Child (2-12)": "Double + Extra Bed",
+  "Child (2-6)": "Double",
+  "Infant": "Single",
 };
 const ROOM_OPTIONS_FOR_GUEST: Record<string, string[]> = {
   "Adult": ["Single", "Double", "Triple"],
-  "Child (2-12)": ["Extra Bed", "Without-Bed"],
-  "Child (2-6)": ["Without-Bed", "Extra Bed"],
-  "Infant": ["Infant"],
+  "Child (2-12)": ["Double + Extra Bed", "Double"],
+  "Child (2-6)": ["Double", "Double + Extra Bed"],
+  "Infant": ["Single"],
 };
 
 const STEPS = [
@@ -180,6 +194,8 @@ export function CustomGroupBuilder() {
   const [returnDateOpen, setReturnDateOpen] = useState(false);
   const [originCityId, setOriginCityId] = useState("");
   const [destinationCityId, setDestinationCityId] = useState("");
+  const [originOpen, setOriginOpen] = useState(false);
+  const [destinationOpen, setDestinationOpen] = useState(false);
   const [selectedOutboundFlight, setSelectedOutboundFlight] = useState<Flight | null>(null);
   const [selectedReturnFlight, setSelectedReturnFlight] = useState<Flight | null>(null);
   const [roomHotelMap, setRoomHotelMap] = useState<Record<number, Hotel>>({});
@@ -202,6 +218,8 @@ export function CustomGroupBuilder() {
   const { data: allHotelsRaw } = useHotels();
   const { data: allTransfers } = useTransfers();
   const { config: groupConfig } = useCustomGroupSettings();
+  const { data: hotelAvailableDates = [] } = useHotelAvailableDates();
+  const { data: hotelBookings = [] } = useHotelBookings();
 
   // Filter by admin settings
   const availableCities = useMemo(() => {
@@ -224,6 +242,7 @@ export function CustomGroupBuilder() {
 
   const originCity = availableCities?.find(c => c.id === originCityId);
   const destinationCity = availableCities?.find(c => c.id === destinationCityId);
+  const previewCity = destinationCity || (availableCities && availableCities.length > 0 ? availableCities[0] : null);
   const nights = departureDate && returnDate ? differenceInDays(returnDate, departureDate) : 0;
 
   // Build availability maps for calendars based on flights
@@ -419,19 +438,19 @@ export function CustomGroupBuilder() {
       if (room.adults > 0) {
         rows.push({ guestType: "Adult", roomType, count: room.adults, roomIndex: idx });
       }
-      // Child 6-12 → Extra Bed or part of Double
+      // Child 6-12 → Double + Extra Bed or part of Double
       if (room.children > 0) {
-        const childRoomType = room.adults === 1 ? roomType : "Extra Bed";
+        const childRoomType = room.adults === 1 ? roomType : "Double + Extra Bed";
         rows.push({ guestType: "Child (2-12)", roomType: childRoomType, count: room.children, roomIndex: idx });
       }
-      // Child 2-6 → Without-Bed or part of Double
+      // Child 2-6 → Double or part of Double
       if (room.children6 > 0) {
-        const child6RoomType = room.adults === 1 ? roomType : "Without-Bed";
+        const child6RoomType = room.adults === 1 ? roomType : "Double";
         rows.push({ guestType: "Child (2-6)", roomType: child6RoomType, count: room.children6, roomIndex: idx });
       }
       // Infants
       if (room.infants > 0) {
-        rows.push({ guestType: "Infant", roomType: "Infant", count: room.infants, roomIndex: idx });
+        rows.push({ guestType: "Infant", roomType: "Single", count: room.infants, roomIndex: idx });
       }
     });
     return rows;
@@ -462,6 +481,63 @@ export function CustomGroupBuilder() {
   }, [rateRows, aggregatedRateRows]);
 
   // Calculate totals
+  const resolvedStayPricing = useMemo(() => {
+    if (nights <= 0 || !departureDate) return [];
+
+    const totalByType: Record<string, number> = {};
+    guestRooms.forEach((r) => {
+      const t = getRoomTypeLabel(r);
+      totalByType[t] = (totalByType[t] || 0) + 1;
+    });
+
+    const seenByType: Record<string, number> = {};
+    return guestRooms.map((room, idx) => {
+      const hotel = roomHotelMap[idx];
+      const typeName = roomTypeMap[idx];
+      if (!hotel || !typeName) return { nights: [] };
+
+      const selector = totalByType[typeName] || 1;
+      const activeRooms = (hotel.hotel_rooms || []).filter((r: any) => r.is_active !== false);
+
+      const currentSeen = seenByType[typeName] || 0;
+      seenByType[typeName] = currentSeen + 1;
+
+      const nightPricing = [];
+      for (let i = 0; i < nights; i++) {
+        const nightDate = addDays(departureDate, i);
+        const nextDay = addDays(nightDate, 1);
+        const dayToEvaluate = nextDay;
+
+        const availForNight = getStayWindowRemaining(
+          hotel.id,
+          dayToEvaluate,
+          addDays(dayToEvaluate, 1),
+          hotelAvailableDates as any,
+          hotelBookings as any,
+        );
+
+        // Track virtual availability for this specific room in the sequence
+        const virtualAvail = availForNight !== null ? Math.max(0, availForNight - currentSeen) : null;
+        const band = pickRoomBand(activeRooms as any, typeName, selector, virtualAvail);
+        const hotelRoom = band || activeRooms.find((r: any) => r.room_type === typeName);
+
+        if (hotelRoom) {
+          nightPricing.push({
+            price_adult: hotelRoom.price_adult ?? 0,
+            price_child: hotelRoom.price_child ?? 0,
+            price_child_6: (hotelRoom as any).price_child_6 ?? (hotelRoom.price_child ?? 0) * 0.7,
+            price_infant: hotelRoom.price_infant ?? 0,
+          });
+        } else {
+          nightPricing.push({ price_adult: 0, price_child: 0, price_child_6: 0, price_infant: 0 });
+        }
+      }
+
+      return {
+        nights: nightPricing,
+      };
+    });
+  }, [guestRooms, roomHotelMap, roomTypeMap, nights, departureDate, hotelAvailableDates, hotelBookings]);
   const flightTotal = ((selectedOutboundFlight?.price || 0) + (selectedReturnFlight?.price || 0)) * passengerCount;
 
   // Auto-calculate hotel total from assigned rooms & hotel_rooms pricing
@@ -469,41 +545,40 @@ export function CustomGroupBuilder() {
     if (nights <= 0) return 0;
     let total = 0;
     guestRooms.forEach((room, idx) => {
-      const hotel = roomHotelMap[idx];
-      const typeName = roomTypeMap[idx];
-      if (!hotel || !typeName) return;
-      const hotelRoom = (hotel.hotel_rooms || []).find(r => r.room_type === typeName && r.is_active !== false);
-      if (!hotelRoom) return;
-      // Per-room cost: price_adult × adults + price_child × children(6-12) + price_child_6 × children(2-6) + price_infant × infants
-      const roomCost = (
-        (hotelRoom.price_adult ?? 0) * room.adults +
-        (hotelRoom.price_child ?? 0) * room.children +
-        ((hotelRoom as any).price_child_6 ?? (hotelRoom.price_child ?? 0) * 0.7) * room.children6 +
-        (hotelRoom.price_infant ?? 0) * room.infants
-      ) * nights;
-      total += roomCost;
+      const stayPricing = resolvedStayPricing[idx];
+      if (!stayPricing || !stayPricing.nights) return;
+
+      stayPricing.nights.forEach((prices) => {
+        const nightCost =
+          prices.price_adult * room.adults +
+          prices.price_child * room.children +
+          prices.price_child_6 * room.children6 +
+          prices.price_infant * room.infants;
+        total += nightCost;
+      });
     });
     return Math.round(total * 100) / 100;
-  }, [guestRooms, roomHotelMap, roomTypeMap, nights]);
+  }, [guestRooms, resolvedStayPricing, nights]);
 
   // Per-room price breakdown for display
   const perRoomPrices = useMemo(() => {
     const prices: Record<number, number> = {};
     guestRooms.forEach((room, idx) => {
-      const hotel = roomHotelMap[idx];
-      const typeName = roomTypeMap[idx];
-      if (!hotel || !typeName) return;
-      const hotelRoom = (hotel.hotel_rooms || []).find(r => r.room_type === typeName && r.is_active !== false);
-      if (!hotelRoom) return;
-      prices[idx] = (
-        (hotelRoom.price_adult ?? 0) * room.adults +
-        (hotelRoom.price_child ?? 0) * room.children +
-        ((hotelRoom as any).price_child_6 ?? (hotelRoom.price_child ?? 0) * 0.7) * room.children6 +
-        (hotelRoom.price_infant ?? 0) * room.infants
-      );
+      const stayPricing = resolvedStayPricing[idx];
+      if (!stayPricing || !stayPricing.nights || stayPricing.nights.length === 0) return;
+
+      let totalRoomPrice = 0;
+      stayPricing.nights.forEach((prices) => {
+        totalRoomPrice +=
+          prices.price_adult * room.adults +
+          prices.price_child * room.children +
+          prices.price_child_6 * room.children6 +
+          prices.price_infant * room.infants;
+      });
+      prices[idx] = totalRoomPrice / stayPricing.nights.length;
     });
     return prices;
-  }, [guestRooms, roomHotelMap, roomTypeMap]);
+  }, [guestRooms, resolvedStayPricing]);
 
   // Detailed per-person breakdown per room for Grand Total display
   const perPersonBreakdown = useMemo(() => {
@@ -511,34 +586,42 @@ export function CustomGroupBuilder() {
     guestRooms.forEach((room, idx) => {
       const hotel = roomHotelMap[idx];
       const typeName = roomTypeMap[idx];
-      if (!hotel || !typeName) return;
-      const hotelRoom = (hotel.hotel_rooms || []).find(r => r.room_type === typeName && r.is_active !== false);
-      if (!hotelRoom) return;
+      const stayPricing = resolvedStayPricing[idx];
+      if (!hotel || !typeName || !stayPricing || !stayPricing.nights) return;
+
+      let totalAdult = 0, totalChild = 0, totalChild6 = 0, totalInfant = 0;
+      stayPricing.nights.forEach((prices) => {
+        totalAdult += prices.price_adult;
+        totalChild += prices.price_child;
+        totalChild6 += prices.price_child_6;
+        totalInfant += prices.price_infant;
+      });
+
       const guests: { label: string; price: number; count: number }[] = [];
       if (room.adults > 0) {
         for (let i = 0; i < room.adults; i++) {
-          guests.push({ label: `Adult ${room.adults > 1 ? i + 1 : ''}`.trim(), price: (hotelRoom.price_adult ?? 0) * nights, count: 1 });
+          guests.push({ label: `Adult ${room.adults > 1 ? i + 1 : ''}`.trim(), price: totalAdult, count: 1 });
         }
       }
       if (room.children > 0) {
         for (let i = 0; i < room.children; i++) {
-          guests.push({ label: `Child ${room.children > 1 ? i + 1 : ''} (2-12)`.trim(), price: (hotelRoom.price_child ?? 0) * nights, count: 1 });
+          guests.push({ label: `Child ${room.children > 1 ? i + 1 : ''} (2-12)`.trim(), price: totalChild, count: 1 });
         }
       }
       if (room.children6 > 0) {
         for (let i = 0; i < room.children6; i++) {
-          guests.push({ label: `Child ${room.children6 > 1 ? i + 1 : ''} (2-6)`.trim(), price: ((hotelRoom as any).price_child_6 ?? (hotelRoom.price_child ?? 0) * 0.7) * nights, count: 1 });
+          guests.push({ label: `Child ${room.children6 > 1 ? i + 1 : ''} (2-6)`.trim(), price: totalChild6, count: 1 });
         }
       }
       if (room.infants > 0) {
         for (let i = 0; i < room.infants; i++) {
-          guests.push({ label: `Infant ${room.infants > 1 ? i + 1 : ''}`.trim(), price: (hotelRoom.price_infant ?? 0) * nights, count: 1 });
+          guests.push({ label: `Infant ${room.infants > 1 ? i + 1 : ''}`.trim(), price: totalInfant, count: 1 });
         }
       }
       breakdown.push({ roomIdx: idx, roomType: typeName, hotelName: hotel.name, guests });
     });
     return breakdown;
-  }, [guestRooms, roomHotelMap, roomTypeMap, nights]);
+  }, [guestRooms, roomHotelMap, roomTypeMap, resolvedStayPricing]);
 
   const hotelTotal = calculatedHotelTotal;
   const transferTotal = (selectedTransfer?.price || 0) * passengerCount;
@@ -744,7 +827,7 @@ export function CustomGroupBuilder() {
                 <p className="font-bold text-foreground text-[15px] tracking-tight font-heading leading-tight">{f.airline}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <span className={cn(
-                    "text-[10px] font-mono font-bold tracking-wider px-2 py-0.5 rounded-md border",
+                    "text-[10px] font-sans font-medium font-bold tracking-wider px-2 py-0.5 rounded-md border",
                     isReturn
                       ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
                       : "bg-primary/5 text-primary border-primary/15"
@@ -772,7 +855,7 @@ export function CustomGroupBuilder() {
             <div className="flex items-center gap-4">
               {/* Departure */}
               <div className="text-left min-w-[70px]">
-                <p className="text-[26px] font-black text-foreground tracking-tight font-heading leading-none tabular-nums">
+                <p className="text-[26px] font-bold text-foreground tracking-tight font-heading leading-none tabular-nums">
                   {f.departure_time?.slice(0, 5) || "—"}
                 </p>
                 <p className={cn(
@@ -810,7 +893,7 @@ export function CustomGroupBuilder() {
               {/* Arrival */}
               <div className="text-right min-w-[70px]">
                 <div className="flex items-baseline justify-end gap-0.5">
-                  <p className="text-[26px] font-black text-foreground tracking-tight font-heading leading-none tabular-nums">
+                  <p className="text-[26px] font-bold text-foreground tracking-tight font-heading leading-none tabular-nums">
                     {f.arrival_time?.slice(0, 5) || "—"}
                   </p>
                   {isNextDay && (
@@ -846,7 +929,7 @@ export function CustomGroupBuilder() {
             <div className="text-right">
               <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-[0.15em] leading-none">From</p>
               <p className={cn(
-                "text-xl font-black leading-tight tracking-tight",
+                "text-xl font-bold leading-tight tracking-tight",
                 accentText
               )}>${f.price}<span className="text-[10px] text-muted-foreground font-semibold ml-1">/pax</span></p>
             </div>
@@ -910,7 +993,7 @@ export function CustomGroupBuilder() {
           >
             <Compass className="h-3 w-3" style={{ color: "hsl(42 95% 65%)" }} />
             <span
-              className="text-[9px] font-black uppercase tracking-[0.25em] bg-clip-text text-transparent"
+              className="text-[9px] font-bold uppercase tracking-[0.25em] bg-clip-text text-transparent"
               style={{
                 backgroundImage:
                   "linear-gradient(90deg, hsl(42 95% 70%), hsl(42 95% 90%), hsl(42 95% 70%))",
@@ -920,7 +1003,7 @@ export function CustomGroupBuilder() {
             </span>
           </motion.div>
 
-          <h2 className="text-2xl md:text-4xl font-black tracking-tight font-heading leading-[1.05] drop-shadow-[0_2px_18px_rgba(0,0,0,0.6)]">
+          <h2 className="text-2xl md:text-4xl font-bold tracking-tight font-heading leading-[1.05] drop-shadow-[0_2px_18px_rgba(0,0,0,0.6)]">
             <span className="bg-gradient-to-r from-white via-white to-sky-100/90 bg-clip-text text-transparent">
               Build Your Own{" "}
             </span>
@@ -1060,7 +1143,7 @@ export function CustomGroupBuilder() {
                         )}
                         <span
                           className={cn(
-                            "relative z-10 flex items-center justify-center h-7 w-7 rounded-full text-xs font-black transition-all",
+                            "relative z-10 flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold transition-all",
                             isActive && "bg-white text-primary shadow-md ring-2 ring-white/50",
                             isDone && "bg-emerald-400 text-emerald-950 shadow-[0_0_12px_rgba(52,211,153,0.5)]",
                             !isActive && !isDone && "bg-muted text-muted-foreground ring-1 ring-border/60"
@@ -1113,9 +1196,9 @@ export function CustomGroupBuilder() {
       {/* ═══ Content Area — on page surface ═══ */}
       <div className="relative pb-8">
         <div className="flex gap-8">
-            {/* Main Content */}
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <AnimatePresence mode="wait" custom={direction}>
+          {/* Main Content */}
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <AnimatePresence mode="wait" custom={direction}>
               {/* ── Step 0: Dates & Destination ── */}
               {step === 0 && (
                 <motion.div
@@ -1127,419 +1210,184 @@ export function CustomGroupBuilder() {
                   transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
                   className="space-y-6"
                 >
-                  {/* ── Premium Search Card ── */}
-                  <div className="relative rounded-3xl border border-border/50 bg-card/80 dark:bg-card/70 backdrop-blur-xl ring-1 ring-border/50 shadow-[0_24px_60px_-28px_hsl(var(--primary)/0.45)] overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.05] via-transparent to-[hsl(210,70%,45%)]/[0.05] pointer-events-none" />
-                    <div className="absolute -top-24 -right-24 h-56 w-56 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-                    <div className="absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-[hsl(210,70%,45%)]/10 blur-3xl pointer-events-none" />
+                  <div className="flex flex-col gap-6">
+                    {/* Premium Search Card */}
+                    <div className="relative rounded-2xl border border-border/40 bg-card/80 backdrop-blur-xl ring-1 ring-border/40 overflow-hidden shadow-xl">
+                      {/* Header strip */}
+                      <div className="relative bg-gradient-to-r from-primary/[0.08] via-blue-500/[0.05] to-transparent px-6 py-5 border-b border-border/40">
+                        <div className="flex items-center gap-3">
+                          <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.4 }} className="h-11 w-11 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center ring-2 ring-primary/20 shadow-lg">
+                            <Compass className="h-5 w-5 text-primary-foreground" />
+                          </motion.div>
+                          <div className="flex-1 min-w-0">
 
-                    {/* Route Selection */}
-                    <div className="relative p-6 pb-6">
-                      <div className="flex items-center gap-3 mb-5">
-                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-[hsl(210,70%,45%)] flex items-center justify-center shadow-lg shadow-primary/30 ring-1 ring-white/20">
-                          <MapPin className="h-4.5 w-4.5 text-primary-foreground" />
-                        </div>
-                        <div>
-                          <h3 className="text-base md:text-lg font-bold text-foreground tracking-tight leading-tight">Select Route</h3>
-                          <p className="text-[11px] text-muted-foreground font-medium">Choose your origin and destination</p>
+                            <h3 className="font-semibold text-foreground leading-tight">Plan Your Group Trip</h3>
+                            <p className="text-sm text-muted-foreground">Select route and travel dates for your group</p>
+                          </div>
                         </div>
                       </div>
-
-                      <div className="relative">
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] gap-3 md:gap-4 items-end">
-                          {/* Origin */}
-                          <div className="space-y-2 min-w-0">
-                            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">From City</label>
-                            <div className="relative group">
-                              <div className="absolute left-3 top-1/2 -translate-y-1/2 h-7 w-7 rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20 flex items-center justify-center pointer-events-none z-10">
-                                <PlaneTakeoffIcon className="h-3.5 w-3.5 text-blue-500" size={14} />
-                              </div>
-                              <Select value={originCityId} onValueChange={setOriginCityId}>
-                                <SelectTrigger className="rounded-xl h-12 pl-12 text-sm border-border/60 shadow-sm hover:border-primary/50 transition-all duration-300 hover:shadow-md bg-secondary/40 backdrop-blur-sm text-foreground focus:ring-2 focus:ring-primary/30 font-medium">
-                                  <SelectValue placeholder="Origin city" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableCities?.map(c => (
-                                    <SelectItem key={c.id} value={c.id}>
-                                      <span className="flex items-center gap-2">
-                                        {c.country && getCountryFlagUrl(c.country) && <img src={getCountryFlagUrl(c.country)!} alt="" className="h-4 w-6 object-cover rounded-sm" />}
-                                        {c.name}, {c.country}
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                      {/* Fields row */}
+                      <div className="p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-end">
+                          {/* From City */}
+                          <div className="md:col-span-3 space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">From</label>
+                            <Popover open={originOpen} onOpenChange={setOriginOpen}>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-full h-12 justify-start text-left font-normal bg-card/60 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 transition-colors px-3 gap-2">
+                                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
+                                    <MapPin className="h-5 w-5 text-white" />
+                                  </div>
+                                  <span className="font-bold text-foreground text-sm truncate">{originCityId ? availableCities?.find(c => c.id === originCityId)?.name : <span className="text-muted-foreground font-normal">Departure city</span>}</span>
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="p-0 border-border/60 bg-background/95 backdrop-blur-xl rounded-xl shadow-2xl z-[100]" align="start">
+                                <Command className="rounded-xl">
+                                  <CommandInput placeholder="Search origin city..." className="h-10" />
+                                  <CommandList className="max-h-[220px]">
+                                    <CommandEmpty>No cities found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {availableCities?.map((c) => (
+                                        <CommandItem key={c.id} value={`${c.name} ${c.country}`} onSelect={() => { setOriginCityId(c.id); setOriginOpen(false); }} className="flex items-center justify-between gap-2 px-3 py-2 font-medium text-xs cursor-pointer data-[selected='true']:bg-primary/10 rounded-lg mx-1 my-0.5">
+                                          <span className="flex items-center gap-2">{c.country && getCountryFlagUrl(c.country) && <img src={getCountryFlagUrl(c.country)!} alt="" className="h-3 w-5 object-cover rounded-sm" />}{c.name}, {c.country}</span>
+                                          {originCityId === c.id && <Check className="h-3 w-3 text-primary" />}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
                           </div>
-
-                          {/* Swap Button - centered between fields (desktop) */}
-                          <div className="hidden md:flex items-end pb-1">
-                            <motion.button
-                              type="button"
-                              onClick={() => {
-                                const tmp = originCityId;
-                                setOriginCityId(destinationCityId);
-                                setDestinationCityId(tmp);
-                              }}
-                              whileHover={{ rotate: 180, scale: 1.08 }}
-                              whileTap={{ scale: 0.92 }}
-                              transition={{ type: "spring", stiffness: 260, damping: 18 }}
-                              className="h-11 w-11 rounded-full bg-gradient-to-br from-primary to-[hsl(210,70%,45%)] flex items-center justify-center shadow-lg shadow-primary/40 ring-2 ring-card hover:shadow-xl hover:shadow-primary/50 transition-shadow"
-                              aria-label="Swap origin and destination"
-                            >
+                          {/* Swap */}
+                          <div className="md:col-span-1 flex justify-center items-end pb-1">
+                            <motion.button type="button" onClick={() => { const tmp = originCityId; setOriginCityId(destinationCityId); setDestinationCityId(tmp); }} whileHover={{ rotate: 180, scale: 1.08 }} whileTap={{ scale: 0.92 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shadow-lg ring-2 ring-card transition-shadow">
                               <ArrowLeftRight className="h-4 w-4 text-primary-foreground" />
                             </motion.button>
                           </div>
-
-                          {/* Destination */}
-                          <div className="space-y-2 min-w-0">
-                            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">To City</label>
-                            <div className="relative group">
-                              <div className="absolute left-3 top-1/2 -translate-y-1/2 h-7 w-7 rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20 flex items-center justify-center pointer-events-none z-10">
-                                <PlaneLandingIcon className="h-3.5 w-3.5 text-emerald-500" size={14} />
-                              </div>
-                              <Select value={destinationCityId} onValueChange={setDestinationCityId}>
-                                <SelectTrigger className="rounded-xl h-12 pl-12 text-sm border-border/60 shadow-sm hover:border-primary/50 transition-all duration-300 hover:shadow-md bg-secondary/40 backdrop-blur-sm text-foreground focus:ring-2 focus:ring-primary/30 font-medium">
-                                  <SelectValue placeholder="Destination city" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableCities?.filter(c => c.id !== originCityId).map(c => (
-                                    <SelectItem key={c.id} value={c.id}>
-                                      <span className="flex items-center gap-2">
-                                        {c.country && getCountryFlagUrl(c.country) && <img src={getCountryFlagUrl(c.country)!} alt="" className="h-4 w-6 object-cover rounded-sm" />}
-                                        {c.name}, {c.country}
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                          {/* To City */}
+                          <div className="md:col-span-3 space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">To</label>
+                            <Popover open={destinationOpen} onOpenChange={setDestinationOpen}>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-full h-12 justify-start text-left font-normal bg-card/60 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 transition-colors px-3 gap-2">
+                                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
+                                    <Globe className="h-5 w-5 text-white" />
+                                  </div>
+                                  <span className="font-bold text-foreground text-sm truncate">{destinationCityId ? availableCities?.find(c => c.id === destinationCityId)?.name : <span className="text-muted-foreground font-normal">Arrival city</span>}</span>
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="p-0 border-border/60 bg-background/95 backdrop-blur-xl rounded-xl shadow-2xl z-[100]" align="start">
+                                <Command className="rounded-xl">
+                                  <CommandInput placeholder="Search destination city..." className="h-10" />
+                                  <CommandList className="max-h-[220px]">
+                                    <CommandEmpty>No cities found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {availableCities?.filter(c => c.id !== originCityId).map((c) => (
+                                        <CommandItem key={c.id} value={`${c.name} ${c.country}`} onSelect={() => { setDestinationCityId(c.id); setDestinationOpen(false); }} className="flex items-center justify-between gap-2 px-3 py-2 font-medium text-xs cursor-pointer data-[selected='true']:bg-primary/10 rounded-lg mx-1 my-0.5">
+                                          <span className="flex items-center gap-2">{c.country && getCountryFlagUrl(c.country) && <img src={getCountryFlagUrl(c.country)!} alt="" className="h-3 w-5 object-cover rounded-sm" />}{c.name}, {c.country}</span>
+                                          {destinationCityId === c.id && <Check className="h-3 w-3 text-primary" />}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                          {/* Departure */}
+                          <div className="md:col-span-2 space-y-1.5 relative">
+                            {nights > 0 && <div className="hidden md:flex absolute -left-2 top-8 z-10 -translate-x-1/2 items-center justify-center px-2 py-0.5 rounded-full bg-gradient-to-r from-primary to-blue-500 text-primary-foreground text-[10px] font-bold shadow-lg ring-2 ring-background">{nights}n</div>}
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Departure</label>
+                            <Popover open={departureDateOpen} onOpenChange={setDepartureDateOpen}>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" className={cn("w-full h-12 justify-start text-left font-normal bg-card/60 backdrop-blur border-border/40 rounded-xl hover:bg-card hover:border-primary transition-colors px-3", !departureDate && "text-muted-foreground")}>
+                                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 mr-2 shadow-md shadow-blue-500/20">
+                                    <CalendarIcon className="h-5 w-5 text-white" />
+                                  </div>
+                                  {departureDate ? <span className="flex flex-col leading-tight"><span className="font-bold text-foreground text-sm">{format(departureDate, "dd MMM yyyy")}</span><span className="text-[10px] text-muted-foreground uppercase">{format(departureDate, "EEEE")}</span></span> : <span className="text-muted-foreground">Pick date</span>}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={departureDate} onSelect={(d) => { setDepartureDate(d); setDepartureDateOpen(false); if (d && (!returnDate || returnDate <= d)) { setTimeout(() => setReturnDateOpen(true), 120); } }} disabled={(date) => startOfDay(date) < startOfDay(new Date())} initialFocus className="p-3 pointer-events-auto" components={{ DayContent: ({ date: dayDate }) => { const key = format(dayDate, "yyyy-MM-dd"); const info = departureDateAvailability.get(key); const hasRoute = originCityId && destinationCityId; return (<div className="flex flex-col items-center gap-0"><span>{dayDate.getDate()}</span>{hasRoute && info && <span className={cn("text-[8px] font-bold leading-none -mt-0.5", info.seats < 5 ? "text-amber-500" : "text-emerald-500")}>${info.price}</span>}{hasRoute && !info && startOfDay(dayDate) >= startOfDay(new Date()) && <span className="text-[8px] text-muted-foreground/40 leading-none -mt-0.5">—</span>}</div>); } }} />
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                          {/* Return */}
+                          <div className="md:col-span-2 space-y-1.5">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Return</label>
+                            <Popover open={returnDateOpen} onOpenChange={setReturnDateOpen}>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" className={cn("w-full h-12 justify-start text-left font-normal bg-card/60 backdrop-blur border-border/40 rounded-xl hover:bg-card hover:border-primary transition-colors px-3", !returnDate && "text-muted-foreground")}>
+                                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 mr-2 shadow-md shadow-blue-500/20">
+                                    <CalendarIcon className="h-5 w-5 text-white" />
+                                  </div>
+                                  {returnDate ? <span className="flex flex-col leading-tight"><span className="font-bold text-foreground text-sm">{format(returnDate, "dd MMM yyyy")}</span><span className="text-[10px] text-muted-foreground uppercase">{format(returnDate, "EEEE")}</span></span> : <span className="text-muted-foreground">Pick date</span>}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={returnDate} onSelect={(d) => { setReturnDate(d); if (d) setReturnDateOpen(false); }} disabled={(date) => startOfDay(date) < (departureDate ? startOfDay(departureDate) : startOfDay(new Date()))} initialFocus className="p-3 pointer-events-auto" components={{ DayContent: ({ date: dayDate }) => { const key = format(dayDate, "yyyy-MM-dd"); const info = returnDateAvailability.get(key); const hasRoute = originCityId && destinationCityId; return (<div className="flex flex-col items-center gap-0"><span>{dayDate.getDate()}</span>{hasRoute && info && <span className={cn("text-[8px] font-bold leading-none -mt-0.5", info.seats < 5 ? "text-amber-500" : "text-emerald-500")}>${info.price}</span>}{hasRoute && !info && startOfDay(dayDate) >= startOfDay(new Date()) && <span className="text-[8px] text-muted-foreground/40 leading-none -mt-0.5">—</span>}</div>); } }} />
+                              </PopoverContent>
+                            </Popover>
                           </div>
                         </div>
-
-                        {/* Inline swap (mobile only) */}
-                        <div className="md:hidden flex justify-center mt-2">
-                          <motion.button
-                            type="button"
-                            onClick={() => {
-                              const tmp = originCityId;
-                              setOriginCityId(destinationCityId);
-                              setDestinationCityId(tmp);
-                            }}
-                            whileTap={{ scale: 0.92, rotate: 180 }}
-                            className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-[hsl(210,70%,45%)] flex items-center justify-center shadow-lg shadow-primary/35"
-                            aria-label="Swap origin and destination"
+                        {nights > 0 && (
+                          <div className="mt-4 flex items-center gap-4 px-4 py-3 rounded-xl bg-primary/5 border border-primary/15">
+                            <div><p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Duration</p><p className="text-sm font-bold text-foreground">{nights} night{nights > 1 ? "s" : ""}</p></div>
+                            <div className="h-8 w-px bg-border" />
+                            <div><p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Travelers</p><p className="text-sm font-bold text-foreground">{passengerCount} guest{passengerCount > 1 ? "s" : ""}</p></div>
+                            <div className="h-8 w-px bg-border" />
+                            <div><p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Dates</p><p className="text-xs font-semibold text-foreground">{departureDate && format(departureDate, "dd MMM")} → {returnDate && format(returnDate, "dd MMM yyyy")}</p></div>
+                          </div>
+                        )}
+                        {originCityId && destinationCityId && departureDateAvailability.size === 0 && (
+                          <div className="mt-3 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/15">
+                            <Shield className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                            <p className="text-xs text-amber-700 dark:text-amber-400 font-light">No flights found for this route — availability will be checked at the next step.</p>
+                          </div>
+                        )}
+                        {/* Next Button */}
+                        <div className="mt-6 flex justify-end">
+                          <Button
+                            onClick={() => goToStep(1)}
+                            disabled={!canProceedStep0}
+                            size="lg"
+                            className="gap-2.5 rounded-xl h-12 px-8 shadow-lg shadow-primary/20 text-sm font-bold tracking-tight transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:-translate-y-0.5 bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-primary-foreground"
                           >
-                            <ArrowLeftRight className="h-4 w-4 text-primary-foreground" />
-                          </motion.button>
+                            Next: Select Flights <ArrowRight className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
                     </div>
-
-                    {/* Hairline Divider with arrow */}
-                    <div className="relative px-6">
-                      <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-                      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2 bg-card text-muted-foreground/60">
-                        <ArrowRight className="h-3 w-3" />
+                    {/* Advertisement Banner Slider */}
+                    <div className="relative rounded-2xl overflow-hidden h-[130px] border border-border/40 shadow-xl mt-2">
+                      <ImageCarousel
+                        images={[promoFlights1, promoFlights2, promoFlights3, promoHotels1, promoHotels2, promoHotels3]}
+                        autoPlay
+                        interval={4000}
+                        aspectRatio="hero"
+                        className="h-full"
+                        showDots={true}
+                        showArrows={true}
+                      />
+                      <div className="absolute top-3 right-4 h-8 w-8 rounded-full bg-black/40 backdrop-blur-md ring-1 ring-white/20 flex items-center justify-center pointer-events-none z-10">
+                        <Tag className="h-4 w-4 text-white/90" />
+                      </div>
+                      <div className="absolute inset-y-0 left-0 flex flex-col justify-center px-8 z-10 bg-gradient-to-r from-black/60 via-black/30 to-transparent pointer-events-none">
+                        <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-[10px] font-bold mb-1.5 rounded-md px-2.5 py-0.5 shadow-md w-fit">
+                          SPECIAL OFFERS
+                        </Badge>
+                        <h3 className="text-lg font-bold text-white tracking-tight leading-tight">
+                          Exclusive Group Discounts Available
+                        </h3>
+                        <p className="text-white/80 text-[11px] mt-1 font-medium max-w-[80%]">
+                          Save up to 35% on early bookings and combined group packages.
+                        </p>
                       </div>
                     </div>
-
-                    {originCityId && destinationCityId && departureDateAvailability.size === 0 && (
-                      <div className="mx-6 mt-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/15">
-                        <Shield className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                        <p className="text-xs text-amber-700 dark:text-amber-400 font-light">No flights found for this route. Calendar shows all dates — availability will be checked at the next step.</p>
-                      </div>
-                    )}
-
-                    {/* Date Selection */}
-                    <div className="relative p-6 pt-6">
-                      <div className="flex items-center gap-3 mb-5">
-                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-[hsl(210,70%,45%)] flex items-center justify-center shadow-lg shadow-primary/30 ring-1 ring-white/20">
-                          <CalendarIcon className="h-4.5 w-4.5 text-primary-foreground" />
-                        </div>
-                        <div>
-                          <h3 className="text-base md:text-lg font-bold text-foreground tracking-tight leading-tight">Travel Dates</h3>
-                          <p className="text-[11px] text-muted-foreground font-medium">When do you want to travel?</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] gap-3 md:gap-4 items-end">
-                        <div className="space-y-2">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Departure</label>
-                          <Popover open={departureDateOpen} onOpenChange={setDepartureDateOpen}>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className={cn(
-                                "w-full justify-start text-left font-medium rounded-xl h-14 border-border/60 shadow-sm hover:border-primary/50 hover:-translate-y-0.5 transition-all duration-300 hover:shadow-md bg-secondary/40 backdrop-blur-sm text-foreground",
-                                !departureDate && "text-muted-foreground"
-                              )}>
-                                <div className="flex items-center gap-3 w-full">
-                                  <div className="h-9 w-9 rounded-lg bg-primary/15 ring-1 ring-primary/25 flex items-center justify-center flex-shrink-0">
-                                    <CalendarIcon className="h-4 w-4 text-primary" />
-                                  </div>
-                                  <div className="text-left">
-                                    {departureDate ? (
-                                      <>
-                                        <p className="text-sm font-bold text-foreground leading-tight">{format(departureDate, "dd MMM yyyy")}</p>
-                                        <p className="text-[10px] text-muted-foreground">{format(departureDate, "EEEE")}</p>
-                                      </>
-                                    ) : (
-                                      <div>
-                                        <p className="text-sm font-semibold">Pick date</p>
-                                        <p className="text-[10px] text-muted-foreground/70">Select departure</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={departureDate}
-                                onSelect={(d) => {
-                                  setDepartureDate(d);
-                                  setDepartureDateOpen(false);
-                                  // Auto-advance: open return picker after departure is chosen
-                                  if (d && (!returnDate || returnDate <= d)) {
-                                    setTimeout(() => setReturnDateOpen(true), 120);
-                                  }
-                                }}
-                                disabled={(date) => date < new Date()}
-                                initialFocus
-                                className="p-3 pointer-events-auto"
-                                components={{
-                                  DayContent: ({ date: dayDate }) => {
-                                    const key = format(dayDate, "yyyy-MM-dd");
-                                    const info = departureDateAvailability.get(key);
-                                    const hasRoute = originCityId && destinationCityId;
-                                    return (
-                                      <div className="flex flex-col items-center gap-0">
-                                        <span>{dayDate.getDate()}</span>
-                                        {hasRoute && info && (
-                                          <span className={cn(
-                                            "text-[8px] font-bold leading-none -mt-0.5",
-                                            info.seats < 5 ? "text-amber-500" : "text-emerald-500"
-                                          )}>
-                                            ${info.price}
-                                          </span>
-                                        )}
-                                        {hasRoute && !info && dayDate >= new Date() && (
-                                          <span className="text-[8px] text-muted-foreground/40 leading-none -mt-0.5">—</span>
-                                        )}
-                                      </div>
-                                    );
-                                  }
-                                }}
-                              />
-                              {originCityId && destinationCityId && (
-                                <div className="px-3 pb-2 flex items-center gap-3 text-[9px] text-muted-foreground border-t border-border/30 pt-2">
-                                  <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Available</span>
-                                  <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Limited</span>
-                                  <span className="flex items-center gap-1"><span className="text-muted-foreground/40">—</span> No flights</span>
-                                </div>
-                              )}
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-
-                        {/* Nights chip */}
-                        <div className="hidden md:flex flex-col items-center justify-end pb-2">
-                          {nights > 0 ? (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              className="flex flex-col items-center gap-1 px-3 py-2 rounded-full bg-gradient-to-br from-primary/10 to-[hsl(210,70%,45%)]/10 ring-1 ring-primary/20 shadow-sm"
-                            >
-                              <Moon className="h-3 w-3 text-primary" />
-                              <span className="text-[10px] font-bold text-foreground leading-none whitespace-nowrap">{nights}n</span>
-                            </motion.div>
-                          ) : (
-                            <div className="flex items-center justify-center h-9 w-9 rounded-full bg-muted/40 ring-1 ring-border/50">
-                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50" />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Return</label>
-                          <Popover open={returnDateOpen} onOpenChange={setReturnDateOpen}>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className={cn(
-                                "w-full justify-start text-left font-medium rounded-xl h-14 border-border/60 shadow-sm hover:border-[hsl(210,70%,45%)]/50 hover:-translate-y-0.5 transition-all duration-300 hover:shadow-md bg-secondary/40 backdrop-blur-sm text-foreground",
-                                !returnDate && "text-muted-foreground"
-                              )}>
-                                <div className="flex items-center gap-3 w-full">
-                                  <div className="h-9 w-9 rounded-lg bg-[hsl(210,70%,45%)]/15 ring-1 ring-[hsl(210,70%,45%)]/25 flex items-center justify-center flex-shrink-0">
-                                    <CalendarIcon className="h-4 w-4 text-[hsl(210,70%,45%)]" />
-                                  </div>
-                                  <div className="text-left">
-                                    {returnDate ? (
-                                      <>
-                                        <p className="text-sm font-bold text-foreground leading-tight">{format(returnDate, "dd MMM yyyy")}</p>
-                                        <p className="text-[10px] text-muted-foreground">{format(returnDate, "EEEE")}</p>
-                                      </>
-                                    ) : (
-                                      <div>
-                                        <p className="text-sm font-semibold">Pick date</p>
-                                        <p className="text-[10px] text-muted-foreground/70">Select return</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={returnDate}
-                                onSelect={(d) => { setReturnDate(d); if (d) setReturnDateOpen(false); }}
-                                disabled={(date) => date < (departureDate || new Date())}
-                                initialFocus
-                                className="p-3 pointer-events-auto"
-                                components={{
-                                  DayContent: ({ date: dayDate }) => {
-                                    const key = format(dayDate, "yyyy-MM-dd");
-                                    const info = returnDateAvailability.get(key);
-                                    const hasRoute = originCityId && destinationCityId;
-                                    return (
-                                      <div className="flex flex-col items-center gap-0">
-                                        <span>{dayDate.getDate()}</span>
-                                        {hasRoute && info && (
-                                          <span className={cn(
-                                            "text-[8px] font-bold leading-none -mt-0.5",
-                                            info.seats < 5 ? "text-amber-500" : "text-emerald-500"
-                                          )}>
-                                            ${info.price}
-                                          </span>
-                                        )}
-                                        {hasRoute && !info && dayDate >= new Date() && (
-                                          <span className="text-[8px] text-muted-foreground/40 leading-none -mt-0.5">—</span>
-                                        )}
-                                      </div>
-                                    );
-                                  }
-                                }}
-                              />
-                              {originCityId && destinationCityId && (
-                                <div className="px-3 pb-2 flex items-center gap-3 text-[9px] text-muted-foreground border-t border-border/30 pt-2">
-                                  <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Available</span>
-                                  <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Limited</span>
-                                  <span className="flex items-center gap-1"><span className="text-muted-foreground/40">—</span> No flights</span>
-                                </div>
-                              )}
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      </div>
-
-                      {/* Mobile nights badge */}
-                      {nights > 0 && (
-                        <div className="md:hidden mt-3 flex justify-center">
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-br from-primary/10 to-[hsl(210,70%,45%)]/10 ring-1 ring-primary/20">
-                            <Moon className="h-3 w-3 text-primary" />
-                            <span className="text-[11px] font-bold text-foreground">{nights} night{nights > 1 ? "s" : ""}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Trip Summary Bar */}
-                    {nights > 0 && (
-                      <>
-                        <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-                        <div className="relative px-6 py-4 bg-muted/40 backdrop-blur-sm">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-6">
-                              <div className="flex items-center gap-2.5">
-                                <div className="h-9 w-9 rounded-xl bg-primary/15 ring-1 ring-primary/25 flex items-center justify-center">
-                                  <Clock className="h-4 w-4 text-primary" />
-                                </div>
-                                <div>
-                                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Duration</p>
-                                  <p className="text-sm font-bold text-foreground">{nights} night{nights > 1 ? "s" : ""}</p>
-                                </div>
-                              </div>
-                              <div className="h-8 w-px bg-border" />
-                              <div className="flex items-center gap-2.5">
-                                <div className="h-9 w-9 rounded-xl bg-accent/15 ring-1 ring-accent/25 flex items-center justify-center">
-                                  <Users className="h-4 w-4 text-accent" />
-                                </div>
-                                <div>
-                                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Travelers</p>
-                                  <p className="text-sm font-bold text-foreground">{passengerCount} guest{passengerCount > 1 ? "s" : ""}</p>
-                                </div>
-                              </div>
-                              <div className="h-8 w-px bg-border" />
-                              <div>
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Dates</p>
-                                <p className="text-xs font-semibold text-foreground">
-                                  {departureDate && format(departureDate, "dd MMM")} → {returnDate && format(returnDate, "dd MMM yyyy")}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    )}
                   </div>
-
-                  {/* Destination Preview Card */}
-                  {destinationCity && (
-                    <div className="grid grid-cols-1 md:grid-cols-[1.2fr,1fr] gap-5">
-                      <div className="relative rounded-2xl overflow-hidden h-56 group bg-gradient-to-br from-primary/20 to-primary/5">
-                        <img
-                          src={destinationCity.image_url || `https://source.unsplash.com/800x600/?${encodeURIComponent(destinationCity.name + ',' + (destinationCity.country || 'travel'))}`}
-                          alt={destinationCity.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                          onError={(e) => {
-                            const target = e.currentTarget;
-                            target.onerror = null;
-                            target.src = `https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&q=80`;
-                          }}
-                        />
-                        <div className="absolute top-3 right-3 h-10 w-10 rounded-full bg-white/15 backdrop-blur-md ring-1 ring-white/25 flex items-center justify-center pointer-events-none">
-                          <Globe className="h-5 w-5 text-white/90" />
-                        </div>
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                        <div className="absolute bottom-0 left-0 p-5">
-                          <Badge className="bg-primary text-primary-foreground text-[10px] font-bold mb-2 rounded-lg">
-                            Trending Destination
-                          </Badge>
-                          <h3 className="text-xl font-black text-white tracking-tight">
-                            The {destinationCity.name} Collective
-                          </h3>
-                          <p className="text-white/60 text-xs mt-1 font-light">
-                            {nights > 0 ? `A ${nights}-night immersive experience for groups of ${passengerCount}.` : `Discover ${destinationCity.name}, ${destinationCity.country}`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col justify-end">
-                        <Button
-                          onClick={() => goToStep(1)}
-                          disabled={!canProceedStep0}
-                          size="lg"
-                          className="gap-2.5 rounded-2xl h-14 px-8 shadow-lg shadow-primary/20 text-sm font-bold tracking-tight transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:-translate-y-0.5 w-full"
-                        >
-                          Next: Select Flights <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  {!destinationCity && (
-                    <div className="flex justify-end">
-                      <Button
-                        onClick={() => goToStep(1)}
-                        disabled={!canProceedStep0}
-                        size="lg"
-                        className="gap-2.5 rounded-2xl h-14 px-10 shadow-lg shadow-primary/20 text-sm font-bold tracking-tight transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:-translate-y-0.5"
-                      >
-                        Next: Select Flights <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
                 </motion.div>
               )}
-
               {/* ── Step 1: Flights ── */}
               {step === 1 && (
                 <motion.div
@@ -1567,7 +1415,7 @@ export function CustomGroupBuilder() {
                             <Sparkles className="h-2.5 w-2.5 text-primary" />
                             <span className="text-[9px] tracking-[0.18em] font-extrabold text-primary uppercase">Step 2 of 4</span>
                           </div>
-                          <h2 className="text-xl font-black text-foreground tracking-tight font-heading leading-tight">Choose Your Flights</h2>
+                          <h2 className="text-xl font-bold text-foreground tracking-tight font-heading leading-tight">Choose Your Flights</h2>
                           <p className="text-xs text-muted-foreground font-medium">Select outbound and return — round-trip pairing for {passengerCount} passenger{passengerCount > 1 ? "s" : ""}</p>
                         </div>
                       </div>
@@ -1598,7 +1446,7 @@ export function CustomGroupBuilder() {
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="text-base font-black text-foreground tracking-tight font-heading">Outbound Flight</h3>
+                          <h3 className="text-base font-bold text-foreground tracking-tight font-heading">Outbound Flight</h3>
                           <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-[0.12em] rounded-md border-primary/30 bg-primary/5 text-primary px-1.5 py-0">Departure</Badge>
                         </div>
                         <p className="text-[12px] text-muted-foreground font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -1613,7 +1461,7 @@ export function CustomGroupBuilder() {
                       </div>
                       <div className="text-right hidden sm:block">
                         <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-muted-foreground">Options</p>
-                        <p className="text-sm font-black text-foreground tabular-nums">{outboundFlights.length}</p>
+                        <p className="text-sm font-bold text-foreground tabular-nums">{outboundFlights.length}</p>
                       </div>
                     </div>
                     {outboundFlights.length === 0 ? (
@@ -1654,7 +1502,7 @@ export function CustomGroupBuilder() {
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="text-base font-black text-foreground tracking-tight font-heading">Return Flight</h3>
+                          <h3 className="text-base font-bold text-foreground tracking-tight font-heading">Return Flight</h3>
                           <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-[0.12em] rounded-md border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 px-1.5 py-0">Inbound</Badge>
                         </div>
                         <p className="text-[12px] text-muted-foreground font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -1669,7 +1517,7 @@ export function CustomGroupBuilder() {
                       </div>
                       <div className="text-right hidden sm:block">
                         <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-muted-foreground">Options</p>
-                        <p className="text-sm font-black text-foreground tabular-nums">{returnFlights.length}</p>
+                        <p className="text-sm font-bold text-foreground tabular-nums">{returnFlights.length}</p>
                       </div>
                     </div>
                     {returnFlights.length === 0 ? (
@@ -1857,9 +1705,9 @@ export function CustomGroupBuilder() {
                                           <SelectValue placeholder="Room type..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {hotelActiveRooms.map(r => (
-                                            <SelectItem key={r.id} value={r.room_type}>
-                                              {r.room_type}
+                                          {Array.from(new Set(hotelActiveRooms.map(r => r.room_type).filter(Boolean))).map(typeStr => (
+                                            <SelectItem key={typeStr} value={typeStr}>
+                                              {typeStr}
                                             </SelectItem>
                                           ))}
                                         </SelectContent>
@@ -2010,7 +1858,7 @@ export function CustomGroupBuilder() {
                           const roomsAssignedHere = Object.values(roomHotelMap).filter(hotel => hotel.id === h.id).length;
                           const isUsed = roomsAssignedHere > 0;
                           const activeRoomsForPrice = (h.hotel_rooms || []).filter(r => r.is_active !== false && requiredRoomTypes.has(r.room_type));
-                          const lowestRoomPrice = activeRoomsForPrice.length > 0 
+                          const lowestRoomPrice = activeRoomsForPrice.length > 0
                             ? Math.min(...activeRoomsForPrice.map(r => r.price_adult ?? r.price_per_night ?? 0))
                             : (h.price_per_night ?? 0);
                           const activeRooms = (h.hotel_rooms || []).filter(r => r.is_active !== false);
@@ -2079,14 +1927,14 @@ export function CustomGroupBuilder() {
                                     {/* Gradient overlay */}
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                                     <div className="absolute inset-0 bg-gradient-to-r from-transparent to-background/5" />
-                                    
+
                                     {/* Selected badge */}
                                     {isUsed && (
                                       <div className="absolute top-3 left-3 h-9 w-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/40 animate-pulse">
                                         <Check className="h-5 w-5 text-primary-foreground" />
                                       </div>
                                     )}
-                                    
+
                                     {/* Star rating on image */}
                                     <div className="absolute bottom-3 left-3 flex items-center gap-1 bg-background/90 backdrop-blur-md rounded-xl px-3 py-1.5 border border-border/20 shadow-sm">
                                       {Array.from({ length: h.star_rating || 3 }).map((_, i) => (
@@ -2139,11 +1987,11 @@ export function CustomGroupBuilder() {
                                       )}
                                     </div>
                                     {/* Price section */}
-                                     <div className="flex items-end justify-between pt-4 border-t border-border/60 mt-4">
-                                       <div>
-                                         <p className="text-[9px] text-muted-foreground/80 uppercase tracking-[0.12em] font-bold mb-1">From / Person / Night</p>
+                                    <div className="flex items-end justify-between pt-4 border-t border-border/60 mt-4">
+                                      <div>
+                                        <p className="text-[9px] text-muted-foreground/80 uppercase tracking-[0.12em] font-bold mb-1">From / Person / Night</p>
                                         <div className="flex items-baseline gap-2.5">
-                                          <p className="font-black text-primary text-2xl tracking-tight font-heading">${lowestRoomPrice}</p>
+                                          <p className="font-bold text-primary text-2xl tracking-tight font-heading">${lowestRoomPrice}</p>
                                           {nights > 0 && (
                                             <div className="flex items-center gap-1.5">
                                               <span className="text-xs text-muted-foreground/80">×</span>
@@ -2235,24 +2083,24 @@ export function CustomGroupBuilder() {
                                             )}>
                                               {(room.price_adult ?? 0) > 0 && (
                                                 <div className="flex justify-between text-[11px]">
-                                                   <span className={isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}>Adult</span>
-                                                   <span className={cn("font-bold", isSelected ? "text-primary-foreground" : "text-foreground")}>
+                                                  <span className={isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}>Adult</span>
+                                                  <span className={cn("font-bold", isSelected ? "text-primary-foreground" : "text-foreground")}>
                                                     ${room.price_adult}/n {nights > 0 && <span className={isSelected ? "text-primary-foreground/60" : "text-muted-foreground"}>= ${(room.price_adult ?? 0) * nights}</span>}
                                                   </span>
                                                 </div>
                                               )}
                                               {(room.price_child ?? 0) > 0 && (
                                                 <div className="flex justify-between text-[11px]">
-                                                   <span className={isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}>Child</span>
-                                                   <span className={cn("font-bold", isSelected ? "text-primary-foreground" : "text-foreground")}>
+                                                  <span className={isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}>Child</span>
+                                                  <span className={cn("font-bold", isSelected ? "text-primary-foreground" : "text-foreground")}>
                                                     ${room.price_child}/n {nights > 0 && <span className={isSelected ? "text-primary-foreground/60" : "text-muted-foreground"}>= ${(room.price_child ?? 0) * nights}</span>}
                                                   </span>
                                                 </div>
                                               )}
                                               {((room as any).price_child_6 ?? 0) > 0 && (
                                                 <div className="flex justify-between text-[11px]">
-                                                   <span className={isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}>Child(2-6)</span>
-                                                   <span className={cn("font-bold", isSelected ? "text-primary-foreground" : "text-foreground")}>
+                                                  <span className={isSelected ? "text-primary-foreground/70" : "text-muted-foreground"}>Child(2-6)</span>
+                                                  <span className={cn("font-bold", isSelected ? "text-primary-foreground" : "text-foreground")}>
                                                     ${(room as any).price_child_6}/n {nights > 0 && <span className={isSelected ? "text-primary-foreground/60" : "text-muted-foreground"}>= ${((room as any).price_child_6 ?? 0) * nights}</span>}
                                                   </span>
                                                 </div>
@@ -2415,69 +2263,69 @@ export function CustomGroupBuilder() {
                   </div>
                 </motion.div>
               )}
-              </AnimatePresence>
-            </div>
+            </AnimatePresence>
+          </div>
 
-            {/* ═══ Sticky Price Sidebar ═══ */}
-            <div className="hidden lg:block w-80 flex-shrink-0">
-              <div className="sticky top-6 space-y-4">
-                {/* ── Guests & Rooms Panel ── */}
-                <div className="rounded-2xl border border-border/60 bg-white dark:bg-card ring-1 ring-primary/10 overflow-hidden shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)]">
-                  <div className="px-5 py-4 border-b border-border/60 bg-gradient-to-r from-primary/[0.05] to-accent/[0.05]">
-                    <h3 className="text-base font-bold text-foreground tracking-tight">Guests & Rooms</h3>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {/* Room count */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm text-foreground font-semibold">
-                        <BedDouble className="h-4 w-4 text-primary" />
-                        Rooms
-                      </div>
-                      <Select value={String(guestRooms.length)} onValueChange={(v) => {
-                        const count = parseInt(v);
-                        setGuestRooms(prev => {
-                          if (count > prev.length) {
-                            const newRooms = [...prev];
-                            for (let i = prev.length; i < count; i++) {
-                              newRooms.push({ id: Date.now() + i, adults: 1, children: 0, children6: 0, infants: 0 });
-                            }
-                            return newRooms;
-                          }
-                          // Clean up stale hotel/room type assignments for removed rooms
-                          const sliced = prev.slice(0, count);
-                          setRoomHotelMap(m => {
-                            const cleaned: Record<number, Hotel> = {};
-                            Object.entries(m).forEach(([k, v]) => { if (Number(k) < count) cleaned[Number(k)] = v; });
-                            return cleaned;
-                          });
-                          setRoomTypeMap(m => {
-                            const cleaned: Record<number, string> = {};
-                            Object.entries(m).forEach(([k, v]) => { if (Number(k) < count) cleaned[Number(k)] = v; });
-                            return cleaned;
-                          });
-                          return sliced;
-                        });
-                      }}>
-                        <SelectTrigger className="w-16 h-9 rounded-xl text-sm font-bold border-border/60 bg-background/70 text-foreground">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                            <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+          {/* ═══ Sticky Price Sidebar ═══ */}
+          <div className="hidden lg:block w-80 flex-shrink-0">
+            <div className="sticky top-6 space-y-4">
+              {/* ── Guests & Rooms Panel ── */}
+              <div className="rounded-2xl border border-border/60 bg-white dark:bg-card ring-1 ring-primary/10 overflow-hidden shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)]">
+                <div className="px-5 py-4 border-b border-border/60 bg-gradient-to-r from-primary/[0.05] to-accent/[0.05]">
+                  <h3 className="text-base font-bold text-foreground tracking-tight">Guests & Rooms</h3>
+                </div>
+                <div className="p-4 space-y-3">
+                  {/* Room count */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-foreground font-semibold">
+                      <BedDouble className="h-4 w-4 text-primary" />
+                      Rooms
                     </div>
+                    <Select value={String(guestRooms.length)} onValueChange={(v) => {
+                      const count = parseInt(v);
+                      setGuestRooms(prev => {
+                        if (count > prev.length) {
+                          const newRooms = [...prev];
+                          for (let i = prev.length; i < count; i++) {
+                            newRooms.push({ id: Date.now() + i, adults: 1, children: 0, children6: 0, infants: 0 });
+                          }
+                          return newRooms;
+                        }
+                        // Clean up stale hotel/room type assignments for removed rooms
+                        const sliced = prev.slice(0, count);
+                        setRoomHotelMap(m => {
+                          const cleaned: Record<number, Hotel> = {};
+                          Object.entries(m).forEach(([k, v]) => { if (Number(k) < count) cleaned[Number(k)] = v; });
+                          return cleaned;
+                        });
+                        setRoomTypeMap(m => {
+                          const cleaned: Record<number, string> = {};
+                          Object.entries(m).forEach(([k, v]) => { if (Number(k) < count) cleaned[Number(k)] = v; });
+                          return cleaned;
+                        });
+                        return sliced;
+                      });
+                    }}>
+                      <SelectTrigger className="w-16 h-9 rounded-xl text-sm font-bold border-border/60 bg-background/70 text-foreground">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                          <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                    {/* Each room */}
-                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-                      {guestRooms.map((room, idx) => {
-                        const roomType = getRoomTypeLabel(room);
-                        const canAddChild = room.adults >= 2 && room.children === 0 && room.adults < 3;
-                        const canAddChild6 = room.adults >= 1 && room.children6 === 0 && (room.adults >= 2 || (room.adults === 1 && room.children === 0));
-                        const canAddAdult = room.adults < MAX_ADULTS && (room.adults < 2 || (room.adults === 2 && room.children === 0 && room.children6 === 0));
-                        
-                        return (
+                  {/* Each room */}
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                    {guestRooms.map((room, idx) => {
+                      const roomType = getRoomTypeLabel(room);
+                      const canAddChild = room.adults >= 2 && room.children === 0 && room.adults < 3;
+                      const canAddChild6 = room.adults >= 1 && room.children6 === 0 && (room.adults >= 2 || (room.adults === 1 && room.children === 0));
+                      const canAddAdult = room.adults < MAX_ADULTS && (room.adults < 2 || (room.adults === 2 && room.children === 0 && room.children6 === 0));
+
+                      return (
                         <div key={room.id} className="rounded-xl border border-border/60 bg-muted/30 overflow-hidden">
                           <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border/60">
                             <span className="text-xs font-bold text-foreground uppercase tracking-wider">Room {idx + 1}</span>
@@ -2534,180 +2382,180 @@ export function CustomGroupBuilder() {
                             })}
                           </div>
                         </div>
-                        );
-                      })}
+                      );
+                    })}
+                  </div>
+
+                  {/* Add Room button */}
+                  <button
+                    onClick={addGuestRoom}
+                    className="w-full py-2 text-xs font-semibold text-primary hover:bg-primary/10 rounded-xl border border-dashed border-primary/30 transition-all"
+                  >
+                    + Add Room
+                  </button>
+
+                  {/* Total guests */}
+                  <div className="flex items-center justify-between pt-2 border-t border-border/60">
+                    <span className="text-xs text-muted-foreground font-light">Total guests</span>
+                    <span className="text-sm font-extrabold text-primary font-heading">{passengerCount}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trip Info Card */}
+              {(originCity || destinationCity) && (
+                <div className="rounded-2xl border border-border/60 bg-white dark:bg-card ring-1 ring-primary/10 overflow-hidden shadow-[0_8px_28px_-12px_rgba(0,0,0,0.15)]">
+                  <div className="px-5 py-4 border-b border-border/60">
+                    <h3 className="text-base font-bold text-foreground tracking-tight">Trip Details</h3>
+                  </div>
+                  <div className="p-5 space-y-3">
+                    {originCity && destinationCity && (
+                      <div className="flex items-center gap-2.5 text-sm">
+                        <span className="text-foreground font-semibold">{originCity.name}</span>
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <div className="h-[2px] w-4 bg-primary/30 rounded-full" />
+                          <Plane className="h-3 w-3 text-blue-400" />
+                          <div className="h-[2px] w-4 bg-primary/30 rounded-full" />
+                        </div>
+                        <span className="text-foreground font-semibold">{destinationCity.name}</span>
+                      </div>
+                    )}
+                    {departureDate && returnDate && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <CalendarIcon className="h-3 w-3" />
+                        <span className="font-light">{format(departureDate, "dd/MM")} – {format(returnDate, "dd/MM/yyyy")}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      {nights > 0 && (
+                        <Badge variant="secondary" className="text-[10px] font-bold rounded-lg px-2.5 bg-muted/40 text-foreground border-border/60">{nights} night{nights > 1 ? "s" : ""}</Badge>
+                      )}
+                      <Badge variant="secondary" className="text-[10px] font-bold rounded-lg px-2.5 bg-muted/40 text-foreground border-border/60">
+                        <Users className="h-3 w-3 mr-1" />
+                        {passengerCount} pax
+                      </Badge>
                     </div>
+                  </div>
+                </div>
+              )}
 
-                    {/* Add Room button */}
-                    <button
-                      onClick={addGuestRoom}
-                      className="w-full py-2 text-xs font-semibold text-primary hover:bg-primary/10 rounded-xl border border-dashed border-primary/30 transition-all"
-                    >
-                      + Add Room
-                    </button>
+              {/* Live Price Card */}
+              <div className="rounded-2xl border border-border/60 bg-white dark:bg-card ring-1 ring-primary/10 overflow-hidden shadow-[0_12px_40px_-12px_rgba(0,0,0,0.18)]">
+                <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-foreground tracking-tight">Live Estimate</h3>
+                    <p className="text-[11px] text-muted-foreground font-light">Includes all travelers</p>
+                  </div>
+                  <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                    <Receipt className="h-4 w-4 text-blue-400" />
+                  </div>
+                </div>
 
-                    {/* Total guests */}
-                    <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                      <span className="text-xs text-muted-foreground font-light">Total guests</span>
-                      <span className="text-sm font-extrabold text-primary font-heading">{passengerCount}</span>
+                <div className="p-5 space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Estimated Route Cost</span>
+                      <span className="text-sm font-semibold text-foreground">${flightTotal > 0 ? flightTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Hotel & Accommodation</span>
+                      <span className="text-sm font-semibold text-foreground">${hotelTotal > 0 ? hotelTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Transfers</span>
+                      <span className="text-sm font-semibold text-foreground">${transferTotal > 0 ? transferTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Group Service Fee</span>
+                      <span className="text-sm font-semibold text-foreground">$0.00</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Taxes & Surcharges</span>
+                      <span className="text-sm font-semibold text-foreground">$0.00</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Trip Info Card */}
-                {(originCity || destinationCity) && (
-                  <div className="rounded-2xl border border-border/60 bg-white dark:bg-card ring-1 ring-primary/10 overflow-hidden shadow-[0_8px_28px_-12px_rgba(0,0,0,0.15)]">
-                    <div className="px-5 py-4 border-b border-border/60">
-                      <h3 className="text-base font-bold text-foreground tracking-tight">Trip Details</h3>
-                    </div>
-                    <div className="p-5 space-y-3">
-                      {originCity && destinationCity && (
-                        <div className="flex items-center gap-2.5 text-sm">
-                          <span className="text-foreground font-semibold">{originCity.name}</span>
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <div className="h-[2px] w-4 bg-primary/30 rounded-full" />
-                            <Plane className="h-3 w-3 text-blue-400" />
-                            <div className="h-[2px] w-4 bg-primary/30 rounded-full" />
-                          </div>
-                          <span className="text-foreground font-semibold">{destinationCity.name}</span>
-                        </div>
-                      )}
-                      {departureDate && returnDate && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <CalendarIcon className="h-3 w-3" />
-                          <span className="font-light">{format(departureDate, "dd/MM")} – {format(returnDate, "dd/MM/yyyy")}</span>
-                        </div>
-                      )}
+                {/* Discount */}
+                {discountAmount > 0 && subtotal > 0 && (
+                  <div className="border-t border-border/60 px-5 py-3">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        {nights > 0 && (
-                          <Badge variant="secondary" className="text-[10px] font-bold rounded-lg px-2.5 bg-muted/40 text-foreground border-border/60">{nights} night{nights > 1 ? "s" : ""}</Badge>
-                        )}
-                        <Badge variant="secondary" className="text-[10px] font-bold rounded-lg px-2.5 bg-muted/40 text-foreground border-border/60">
-                          <Users className="h-3 w-3 mr-1" />
-                          {passengerCount} pax
-                        </Badge>
+                        <Tag className="h-3.5 w-3.5 text-emerald-400" />
+                        <span className="text-xs font-semibold text-emerald-400">
+                          Discount {discountPct > 0 ? `(${discountPct}%)` : ""} {discountFixed > 0 ? `($${discountFixed})` : ""}
+                        </span>
                       </div>
+                      <span className="text-sm font-bold text-emerald-400">-${discountAmount}</span>
                     </div>
                   </div>
                 )}
 
-                {/* Live Price Card */}
-                <div className="rounded-2xl border border-border/60 bg-white dark:bg-card ring-1 ring-primary/10 overflow-hidden shadow-[0_12px_40px_-12px_rgba(0,0,0,0.18)]">
-                  <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-base font-bold text-foreground tracking-tight">Live Estimate</h3>
-                      <p className="text-[11px] text-muted-foreground font-light">Includes all travelers</p>
-                    </div>
-                    <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center">
-                      <Receipt className="h-4 w-4 text-blue-400" />
-                    </div>
+                {/* Per-Person Hotel Breakdown */}
+                {perPersonBreakdown.length > 0 && (
+                  <div className="border-t border-border/60 px-5 py-3 space-y-2">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Hotel Price Breakdown ({nights} night{nights !== 1 ? 's' : ''})</p>
+                    {perPersonBreakdown.map((room, ri) => (
+                      <div key={ri} className="space-y-1">
+                        <p className="text-[10px] font-semibold text-foreground">
+                          Room {room.roomIdx + 1} — {room.roomType} <span className="text-muted-foreground font-normal">({room.hotelName})</span>
+                        </p>
+                        {room.guests.map((g, gi) => (
+                          <div key={gi} className="flex items-center justify-between pl-3">
+                            <span className="text-[10px] text-muted-foreground">{g.label}</span>
+                            <span className="text-[10px] font-bold text-foreground">${Math.round(g.price)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
+                )}
 
-                  <div className="p-5 space-y-4">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Estimated Route Cost</span>
-                        <span className="text-sm font-semibold text-foreground">${flightTotal > 0 ? flightTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Hotel & Accommodation</span>
-                        <span className="text-sm font-semibold text-foreground">${hotelTotal > 0 ? hotelTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Transfers</span>
-                        <span className="text-sm font-semibold text-foreground">${transferTotal > 0 ? transferTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Group Service Fee</span>
-                        <span className="text-sm font-semibold text-foreground">$0.00</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Taxes & Surcharges</span>
-                        <span className="text-sm font-semibold text-foreground">$0.00</span>
-                      </div>
-                    </div>
+                {/* Grand Total */}
+                <div className="border-t border-border/60 px-5 py-5">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2">Total Cost</p>
+                  <div className="flex items-end gap-3">
+                    <span className={cn(
+                      "font-bold transition-all duration-500 font-heading leading-none",
+                      grandTotal > 0 ? "text-4xl text-foreground" : "text-2xl text-muted-foreground/70"
+                    )}>
+                      ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                    {discountAmount > 0 && subtotal > 0 && (
+                      <span className="text-xs line-through text-muted-foreground/60 mb-1">${subtotal}</span>
+                    )}
+                    <button className="text-[10px] font-bold text-primary underline underline-offset-2 mb-1 hover:text-primary/80 transition-colors">
+                      View Breakdown
+                    </button>
                   </div>
+                </div>
 
-                  {/* Discount */}
-                  {discountAmount > 0 && subtotal > 0 && (
-                    <div className="border-t border-border/60 px-5 py-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Tag className="h-3.5 w-3.5 text-emerald-400" />
-                          <span className="text-xs font-semibold text-emerald-400">
-                            Discount {discountPct > 0 ? `(${discountPct}%)` : ""} {discountFixed > 0 ? `($${discountFixed})` : ""}
-                          </span>
-                        </div>
-                        <span className="text-sm font-bold text-emerald-400">-${discountAmount}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Per-Person Hotel Breakdown */}
-                  {perPersonBreakdown.length > 0 && (
-                    <div className="border-t border-border/60 px-5 py-3 space-y-2">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Hotel Price Breakdown ({nights} night{nights !== 1 ? 's' : ''})</p>
-                      {perPersonBreakdown.map((room, ri) => (
-                        <div key={ri} className="space-y-1">
-                          <p className="text-[10px] font-semibold text-foreground">
-                            Room {room.roomIdx + 1} — {room.roomType} <span className="text-muted-foreground font-normal">({room.hotelName})</span>
-                          </p>
-                          {room.guests.map((g, gi) => (
-                            <div key={gi} className="flex items-center justify-between pl-3">
-                              <span className="text-[10px] text-muted-foreground">{g.label}</span>
-                              <span className="text-[10px] font-bold text-foreground">${Math.round(g.price)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Grand Total */}
-                  <div className="border-t border-border/60 px-5 py-5">
-                    <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2">Total Cost</p>
-                    <div className="flex items-end gap-3">
-                      <span className={cn(
-                        "font-black transition-all duration-500 font-heading leading-none",
-                        grandTotal > 0 ? "text-4xl text-foreground" : "text-2xl text-muted-foreground/70"
-                      )}>
-                        ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </span>
-                      {discountAmount > 0 && subtotal > 0 && (
-                        <span className="text-xs line-through text-muted-foreground/60 mb-1">${subtotal}</span>
-                      )}
-                      <button className="text-[10px] font-bold text-primary underline underline-offset-2 mb-1 hover:text-primary/80 transition-colors">
-                        View Breakdown
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* CTA Button - always visible */}
-                  <div className="px-5 pb-5">
-                    <Button
-                      onClick={step === 3 ? handleProceedToBooking : () => goToStep(step + 1)}
-                      className="w-full gap-2.5 rounded-2xl h-16 shadow-lg shadow-primary/25 font-bold tracking-wide uppercase text-base hover:shadow-xl transition-all duration-300 bg-gradient-to-r from-primary via-primary to-[hsl(231,50%,45%)]"
-                      disabled={
-                        (step === 0 && !canProceedStep0) ||
-                        (step === 1 && !canProceedStep1) ||
-                        (step === 2 && !canProceedStep2) ||
-                        (step === 3 && !canProceedStep2)
-                      }
-                    >
-                      {step === 0 && <>Next: Select Flights <ArrowRight className="h-4 w-4" /></>}
-                      {step === 1 && <>Next: Select Hotel <ArrowRight className="h-4 w-4" /></>}
-                      {step === 2 && <>Next: Summary <ArrowRight className="h-4 w-4" /></>}
-                      {step === 3 && <><CreditCard className="h-4 w-4" /> Proceed to Booking <ArrowRight className="h-4 w-4" /></>}
-                    </Button>
-                    <p className="text-[10px] text-muted-foreground/60 mt-3 text-center font-light">
-                      Price is an estimate and may change during flight and hotel selection steps.
-                    </p>
-                  </div>
+                {/* CTA Button - always visible */}
+                <div className="px-5 pb-5">
+                  <Button
+                    onClick={step === 3 ? handleProceedToBooking : () => goToStep(step + 1)}
+                    className="w-full gap-2.5 rounded-2xl h-16 shadow-lg shadow-primary/25 font-bold tracking-wide uppercase text-base hover:shadow-xl transition-all duration-300 bg-gradient-to-r from-primary via-primary to-[hsl(231,50%,45%)]"
+                    disabled={
+                      (step === 0 && !canProceedStep0) ||
+                      (step === 1 && !canProceedStep1) ||
+                      (step === 2 && !canProceedStep2) ||
+                      (step === 3 && !canProceedStep2)
+                    }
+                  >
+                    {step === 0 && <>Next: Select Flights <ArrowRight className="h-4 w-4" /></>}
+                    {step === 1 && <>Next: Select Hotel <ArrowRight className="h-4 w-4" /></>}
+                    {step === 2 && <>Next: Summary <ArrowRight className="h-4 w-4" /></>}
+                    {step === 3 && <><CreditCard className="h-4 w-4" /> Proceed to Booking <ArrowRight className="h-4 w-4" /></>}
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground/60 mt-3 text-center font-light">
+                    Price is an estimate and may change during flight and hotel selection steps.
+                  </p>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
   );
 }

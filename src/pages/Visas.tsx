@@ -141,65 +141,6 @@ const Visas = () => {
         />
       )}
 
-      {/* Hero Section - hidden in manage view */}
-      {!isManageView && (
-        <>
-          <div className="relative rounded-2xl overflow-hidden h-[200px] md:h-[260px]">
-            <ImageCarousel 
-              images={heroImages} 
-              autoPlay 
-              interval={5000}
-              aspectRatio="hero"
-              className="h-full"
-              showDots={heroImages.length > 1}
-              showArrows={heroImages.length > 1}
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-navy/80 via-navy/50 to-transparent flex items-center">
-              <div className="px-8 md:px-12 max-w-2xl">
-                <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
-                  Visa Services
-                </h1>
-                <p className="text-white/90 text-lg">
-                  Fast and reliable visa processing for your clients. Upload documents and track applications.
-                </p>
-                {isAdmin && (
-                  <Button variant="coral" className="mt-4 shadow-lg" onClick={() => setFormOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" />Add Visa Service
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Compact Stats */}
-          <div className="flex flex-wrap gap-3">
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
-              <Stamp className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold">{stats?.total ?? 0}</span>
-              <span className="text-xs text-muted-foreground">Destinations</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
-              <CheckCircle className="h-4 w-4 text-success" />
-              <span className="text-sm font-semibold">{stats?.active ?? 0}</span>
-              <span className="text-xs text-muted-foreground">Available</span>
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search by country or visa type..." 
-                className="pl-10 rounded-xl"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-        </>
-      )}
-
       {/* Admin Manage Table */}
       {isManageView ? (
         <Card className="shadow-card">
@@ -296,6 +237,48 @@ const Visas = () => {
           ) : (
             <VisaSelectionFlow visas={visas} onSelect={handleApply} />
           )}
+
+          {/* Banner Moved Down */}
+          <div className="relative rounded-2xl overflow-hidden h-[180px] md:h-[220px] mt-6">
+            <ImageCarousel 
+              images={heroImages} 
+              autoPlay 
+              interval={5000}
+              aspectRatio="hero"
+              className="h-full"
+              showDots={heroImages.length > 1}
+              showArrows={heroImages.length > 1}
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-navy/80 via-navy/50 to-transparent flex items-center">
+              <div className="px-8 md:px-12 max-w-2xl">
+                <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
+                  Visa Services
+                </h1>
+                <p className="text-white/90 text-base">
+                  Fast and reliable visa processing for your clients. Upload documents and track applications.
+                </p>
+                {isAdmin && (
+                  <Button variant="coral" size="sm" className="mt-3 shadow-lg h-8" onClick={() => setFormOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />Add Visa Service
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Compact Stats */}
+          <div className="flex flex-wrap gap-3 mt-4">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+              <Stamp className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">{stats?.total ?? 0}</span>
+              <span className="text-xs text-muted-foreground">Destinations</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+              <CheckCircle className="h-4 w-4 text-success" />
+              <span className="text-sm font-semibold">{stats?.active ?? 0}</span>
+              <span className="text-xs text-muted-foreground">Available</span>
+            </div>
+          </div>
         </>
       )}
     </div>

@@ -339,7 +339,7 @@ export default function FinanceDashboard() {
                         ({agency.credit_limit_type})
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs font-mono">
+                    <TableCell className="text-xs font-sans font-medium">
                       ${(agency.used_credit || 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="w-[120px]">

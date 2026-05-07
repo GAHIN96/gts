@@ -90,12 +90,37 @@ export default function Auth() {
         <img src={gtsLogo} alt="GTS Booking" className="h-40 lg:h-48 w-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.5)]" />
       </div>
 
-      {/* Left text overlay */}
-      <div className="absolute left-10 top-[30%] z-10 max-w-lg">
-        <h1 className="text-5xl sm:text-6xl xl:text-7xl font-bold font-heading text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] leading-[1.1] tracking-tight">
-          Explore the <br /><span className="bg-gradient-to-r from-[hsl(270,70%,60%)] to-[hsl(207,85%,55%)] bg-clip-text text-transparent drop-shadow-none" style={{ WebkitTextStroke: '0.5px rgba(255,255,255,0.2)' }}>world</span>
+      {/* Left text overlay - Enhanced Premium UI */}
+      <div className="absolute left-10 lg:left-16 top-[28%] z-10 max-w-2xl">
+        <h1 className="text-6xl sm:text-7xl xl:text-8xl font-bold font-heading text-white tracking-tighter leading-[1.05] animate-fade-up" style={{ textShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+          Explore the <br />
+          <span className="relative inline-block mt-2">
+            {/* Animated glow behind text */}
+            <span className="absolute -inset-4 bg-gradient-to-r from-violet-600 to-cyan-500 blur-2xl opacity-40 animate-pulse" />
+            <span className="relative bg-gradient-to-r from-violet-400 via-cyan-300 to-blue-500 bg-clip-text text-transparent pb-2 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.2)' }}>
+              world
+            </span>
+          </span>
         </h1>
-        <p className="text-white/80 text-base mt-4 leading-relaxed drop-shadow-md">Your complete travel management platform — flights, hotels, and group packages.</p>
+        
+        <div className="mt-8 animate-fade-up" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
+          <div className="inline-flex items-center gap-4 px-6 py-4 rounded-2xl bg-black/20 backdrop-blur-xl border border-white/10 text-white/90 text-lg md:text-xl font-light shadow-2xl">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.8)]"></span>
+            </span>
+            <span className="tracking-wide">Your complete travel management platform</span>
+          </div>
+          
+          <div className="flex items-center gap-6 mt-6 ml-2">
+            {['Flights', 'Hotels', 'Group Packages'].map((item) => (
+              <div key={item} className="flex items-center gap-2 text-white/70 text-sm tracking-widest uppercase font-medium">
+                <span className="h-px w-6 bg-white/20" />
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
       <div className="absolute left-10 bottom-6 z-10">
         <p className="text-xs text-white/40">© {new Date().getFullYear()} GTS Booking · All rights reserved</p>

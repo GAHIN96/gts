@@ -361,7 +361,7 @@ export function HotelAvailabilityInsightsCalendar({ hotelId, availableDates, roo
                         className="rounded-lg border p-3 hover:bg-muted/30 transition-colors"
                       >
                         <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="font-mono text-xs font-semibold text-primary">
+                          <span className="font-sans font-medium text-xs font-semibold text-primary">
                             {e.bookingNumber}
                           </span>
                           {e.status && (

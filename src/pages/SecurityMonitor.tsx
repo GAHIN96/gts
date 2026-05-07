@@ -210,7 +210,7 @@ export default function SecurityMonitor() {
                   ) : (
                     alerts.map((alert) => (
                       <TableRow key={alert.id}>
-                        <TableCell className="text-[11px] font-mono text-muted-foreground">
+                        <TableCell className="text-[11px] font-sans font-medium text-muted-foreground">
                           {format(new Date(alert.created_at), "MM/dd HH:mm")}
                         </TableCell>
                         <TableCell>
@@ -282,10 +282,10 @@ export default function SecurityMonitor() {
                     lockouts.map((lock) => (
                       <TableRow key={lock.id}>
                         <TableCell className="text-xs font-medium">{lock.email}</TableCell>
-                        <TableCell className="text-[11px] font-mono text-muted-foreground">
+                        <TableCell className="text-[11px] font-sans font-medium text-muted-foreground">
                           {format(new Date(lock.locked_at), "MM/dd HH:mm")}
                         </TableCell>
-                        <TableCell className="text-[11px] font-mono text-muted-foreground">
+                        <TableCell className="text-[11px] font-sans font-medium text-muted-foreground">
                           {format(new Date(lock.locked_until), "MM/dd HH:mm")}
                         </TableCell>
                         <TableCell>
@@ -335,11 +335,11 @@ export default function SecurityMonitor() {
                   ) : (
                     sessions.map((s) => (
                       <TableRow key={s.id} className={s.is_suspicious ? "bg-destructive/5" : ""}>
-                        <TableCell className="text-[11px] font-mono text-muted-foreground">
+                        <TableCell className="text-[11px] font-sans font-medium text-muted-foreground">
                           {format(new Date(s.logged_in_at), "MM/dd HH:mm")}
                         </TableCell>
                         <TableCell className="text-xs">{s.email || "—"}</TableCell>
-                        <TableCell className="text-[11px] font-mono text-muted-foreground">{s.ip_address || "—"}</TableCell>
+                        <TableCell className="text-[11px] font-sans font-medium text-muted-foreground">{s.ip_address || "—"}</TableCell>
                         <TableCell className="text-[11px] max-w-[180px] truncate text-muted-foreground">{s.device_info || "—"}</TableCell>
                         <TableCell>
                           {s.is_suspicious ? (
@@ -383,11 +383,11 @@ export default function SecurityMonitor() {
                   ) : (
                     attempts.map((a) => (
                       <TableRow key={a.id} className={!a.success ? "bg-destructive/5" : ""}>
-                        <TableCell className="text-[11px] font-mono text-muted-foreground">
+                        <TableCell className="text-[11px] font-sans font-medium text-muted-foreground">
                           {format(new Date(a.created_at), "MM/dd HH:mm:ss")}
                         </TableCell>
                         <TableCell className="text-xs">{a.email}</TableCell>
-                        <TableCell className="text-[11px] font-mono text-muted-foreground">{a.ip_address || "—"}</TableCell>
+                        <TableCell className="text-[11px] font-sans font-medium text-muted-foreground">{a.ip_address || "—"}</TableCell>
                         <TableCell>
                           {a.success ? (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-emerald-600 border-emerald-300">Success</Badge>

@@ -114,8 +114,8 @@ const SECTION_DOT: Record<string, string> = {
 
 const RECENT_KEY = "sidebar.recent.v1";
 const COMPACT_KEY = "sidebar.compact.v1";
-const SIDEBAR_DEFAULT_WIDTH = "76px";
-const SIDEBAR_COMPACT_WIDTH = "60px";
+const SIDEBAR_DEFAULT_WIDTH = "96px";
+const SIDEBAR_COMPACT_WIDTH = "64px";
 
 export function AppSidebar() {
   const location = useLocation();
@@ -230,14 +230,15 @@ export function AppSidebar() {
             >
               {active && (
                 <>
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-7 w-[3px] rounded-r-full bg-gradient-to-b from-[hsl(6,70%,62%)] to-[hsl(214,65%,54%)] shadow-[0_0_10px_hsl(6,70%,62%/0.6)]" />
-                  <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-l-full bg-[hsl(6,70%,62%)]/70" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-[4px] rounded-r-full bg-gradient-to-b from-[hsl(6,70%,62%)] via-[hsl(290,40%,60%)] to-[hsl(214,65%,54%)] shadow-[0_0_12px_hsl(6,70%,62%/0.7)] z-10" />
+                  <span className="absolute inset-0 rounded-xl bg-white/[0.03] animate-pulse duration-[3s]" />
+                  <span className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-[2px] rounded-l-full bg-[hsl(6,70%,62%)]/40" />
                 </>
               )}
               <span className="relative transition-transform duration-200 group-hover/rail:scale-110 group-hover/rail:-translate-y-0.5">
                 <item.icon
-                  className={cn("h-[26px] w-[26px]", active && "text-white drop-shadow-[0_0_6px_hsl(6,70%,62%/0.5)]")}
-                  strokeWidth={active ? 2 : 1.75}
+                  className={cn("h-[26px] w-[26px] transition-all duration-300", active ? "text-white drop-shadow-[0_0_8px_hsl(6,70%,65%/0.6)] scale-105" : "group-hover/rail:text-white/90")}
+                  strokeWidth={active ? 2.25 : 1.75}
                 />
                 {hasBadge && (
                   <span className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] flex items-center justify-center rounded-full text-[9px] font-bold px-1 leading-none bg-[hsl(6,70%,60%)] text-white shadow-md ring-1 ring-white/40 animate-pulse">
@@ -258,7 +259,7 @@ export function AppSidebar() {
           <TooltipContent side="right" className="text-xs px-2 py-1 flex items-center gap-2">
             <span>{item.title}</span>
             {shortcutNum && shortcutNum <= 9 && (
-              <kbd className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">⌥{shortcutNum}</kbd>
+              <kbd className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-sans font-medium">⌥{shortcutNum}</kbd>
             )}
           </TooltipContent>
         </Tooltip>
@@ -328,13 +329,13 @@ export function AppSidebar() {
     }
     const dot = SECTION_DOT[children] || "white";
     return (
-      <div className={cn("px-2 mb-1 flex items-center gap-1.5 justify-center", first ? "mt-2" : "mt-3")}>
-        {!first && <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/15" />}
-        <span className="flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot, boxShadow: `0 0 6px ${dot}` }} />
-          <span className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-[hsl(6,35%,88%)]/65">{children}</span>
+      <div className={cn("px-3 mb-1.5 flex items-center gap-2 justify-center", first ? "mt-3" : "mt-5")}>
+        {!first && <span className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />}
+        <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/[0.03] border border-white/5 shadow-inner">
+          <span className="h-1.5 w-1.5 rounded-full animate-indicator-pulse" style={{ background: dot, boxShadow: `0 0 8px ${dot}` }} />
+          <span className="text-[8px] font-bold uppercase tracking-[0.18em] text-white/40">{children}</span>
         </span>
-        {!first && <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/15" />}
+        {!first && <span className="h-[1px] flex-1 bg-gradient-to-l from-transparent via-white/10 to-transparent" />}
       </div>
     );
   };
@@ -358,10 +359,11 @@ export function AppSidebar() {
 
       {/* Logo */}
       <SidebarHeader className={cn(
-        "!p-0 flex items-center justify-center border-b border-white/10 shrink-0 relative overflow-hidden",
+        "!p-0 flex items-center justify-center border-b border-white/10 shrink-0 relative overflow-hidden sidebar-premium-glow",
         compact ? "h-[56px]" : "h-[68px]"
       )}>
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_120%,hsl(6,70%,65%/0.22),transparent_65%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_120%,hsl(6,70%,65%/0.25),transparent_70%)]" />
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
         <Link to="/" className="relative flex items-center justify-center w-full h-full px-2">
           <img
             src={companySettings.logo && !companySettings.logo.includes('company-logo') ? companySettings.logo : gtsLogoOfficial}
@@ -424,12 +426,12 @@ export function AppSidebar() {
           {/* User */}
           <Popover>
             <PopoverTrigger asChild>
-              <button className="flex flex-col items-center justify-center gap-0 mx-1.5 my-px rounded-xl py-2 text-sidebar-rail-fg/80 hover:text-white hover:bg-white/10 transition-all">
-                <span className="relative h-9 w-9 rounded-full p-[1.5px] bg-gradient-to-br from-[hsl(6,70%,62%)] via-[hsl(290,25%,60%)] to-[hsl(214,65%,54%)] shadow-[0_2px_8px_hsl(0,0%,0%,0.25)]">
-                  <span className="flex h-full w-full items-center justify-center rounded-full bg-[hsl(214,55%,28%)] text-[14px] font-semibold text-white">
+              <button className="flex flex-col items-center justify-center gap-0 mx-1.5 my-px rounded-xl py-2 text-sidebar-rail-fg/80 hover:text-white hover:bg-white/10 transition-all group/user">
+                <span className="relative h-10 w-10 rounded-full p-[1.5px] bg-gradient-to-br from-[hsl(6,70%,62%)] via-[hsl(290,40%,65%)] to-[hsl(214,70%,55%)] shadow-[0_4px_12px_hsl(0,0%,0%,0.3)] transition-transform duration-300 group-hover/user:scale-110">
+                  <span className="flex h-full w-full items-center justify-center rounded-full bg-[hsl(214,60%,32%)] text-[14px] font-bold text-white shadow-inner">
                     {userInitial}
                   </span>
-                  <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[hsl(142,70%,48%)] ring-2 ring-[hsl(214,70%,28%)] shadow-[0_0_6px_hsl(142,70%,48%/0.7)]" />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-[hsl(142,76%,46%)] ring-2 ring-[hsl(214,70%,28%)] shadow-[0_0_10px_hsl(142,76%,46%/0.8)]" />
                 </span>
                 {!compact && <span className="text-[10px] font-medium leading-none tracking-[-0.01em] truncate max-w-[68px] -mt-0.5">{userName}</span>}
               </button>

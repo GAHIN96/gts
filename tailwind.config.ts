@@ -19,8 +19,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['"Noto Sans"', 'system-ui', 'sans-serif'],
-        heading: ['"Noto Sans"', 'system-ui', 'sans-serif'],
+        sans: ['"Cyntho Next"', 'system-ui', 'sans-serif'],
+        heading: ['"Cyntho Next"', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -83,9 +83,7 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
-      fontFamily: {
-        sans: ['"Noto Sans"', 'system-ui', 'sans-serif'],
-      },
+
       keyframes: {
         "accordion-down": {
           from: { height: "0" },

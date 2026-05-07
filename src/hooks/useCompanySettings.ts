@@ -13,6 +13,12 @@ export interface CompanySettings {
   contactEmail: string;
   phone: string;
   address: string;
+  departmentEmails: {
+    ops: string;
+    visa: string;
+    finance: string;
+    technical: string;
+  };
 }
 
 const defaultCompanySettings: CompanySettings = {
@@ -23,6 +29,12 @@ const defaultCompanySettings: CompanySettings = {
   contactEmail: "info@gtsbooking.com",
   phone: "+964 770 123 4567",
   address: "Baghdad, Al-Mansour District",
+  departmentEmails: {
+    ops: "ops@gtsbooking.com",
+    visa: "visa@gtsbooking.com",
+    finance: "finance@gtsbooking.com",
+    technical: "tech@gtsbooking.com",
+  },
 };
 
 const SETTING_KEY = "company_settings";
@@ -51,6 +63,7 @@ export function useCompanySettings() {
           contactEmail: (parsed.contactEmail as string) || defaultCompanySettings.contactEmail,
           phone: (parsed.phone as string) || defaultCompanySettings.phone,
           address: (parsed.address as string) || defaultCompanySettings.address,
+          departmentEmails: (parsed.departmentEmails as any) || defaultCompanySettings.departmentEmails,
         });
       }
     } catch (error) {

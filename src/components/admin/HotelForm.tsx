@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useSidebarOffset } from "@/hooks/useSidebarOffset";
 import { Loader2, Upload, X, Plus, Trash2, ImageIcon, Star, Search, DollarSign, RotateCcw, Copy, icons } from "lucide-react";
 import { SectionJumpNav } from "@/components/admin/SectionJumpNav";
@@ -28,7 +28,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useCreateHotel, useUpdateHotel, type Hotel, type HotelInsert } from "@/hooks/useHotels";
+import { useHotels, useCreateHotel, useUpdateHotel, type Hotel, type HotelInsert } from "@/hooks/useHotels";
 import { useHotelRooms, useCreateHotelRoom, useUpdateHotelRoom, useDeleteHotelRoom } from "@/hooks/useHotelRooms";
 import { useCities } from "@/hooks/useCities";
 import { useAmenities } from "@/hooks/useAmenities";
@@ -65,6 +65,8 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
   const { data: cities = [] } = useCities();
   const { amenities: allAmenities } = useAmenities();
   const { data: packages = [] } = usePackages();
+  const { data: allHotelsList = [] } = useHotels();
+
   const isEditing = !!hotel;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState("home");
@@ -108,7 +110,15 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
   }>>([]);
 
   // Rooms (for Default Prices tab)
-  const { data: hotelRooms = [] } = useHotelRooms(hotel?.id || null);
+  const { data: dbRooms = [] } = useHotelRooms(hotel?.id || null);
+  const [addedRooms, setAddedRooms] = useState<any[]>([]);
+  const hotelRooms = useMemo(() => {
+    const combined = [...dbRooms];
+    addedRooms.forEach(ar => {
+      if (!combined.some(r => r.id === ar.id)) combined.push(ar);
+    });
+    return combined;
+  }, [dbRooms, addedRooms]);
 
   useEffect(() => {
     if (hotel) {
@@ -163,10 +173,12 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
 
   const loadSpecialPrices = async (hotelId: string) => {
     const { data } = await (supabase as any).from("hotel_special_prices").select("*").eq("hotel_id", hotelId).order("from_date");
-    if (data) setSpecialPrices(data.map((d: any) => ({
-      from_date: d.from_date, to_date: d.to_date, room_id: d.room_id || "", room_rate: d.room_rate, commission: d.commission,
-      price_adult: d.price_adult ?? 0, price_child_6_12: d.price_child_6_12 ?? 0, price_child_2_6: d.price_child_2_6 ?? 0, price_infant: d.price_infant ?? 0,
-    })));
+    if (data) {
+      setSpecialPrices(data.map((d: any) => ({
+        from_date: d.from_date, to_date: d.to_date, room_id: d.room_id || "", room_rate: d.room_rate, commission: d.commission,
+        price_adult: d.price_adult ?? 0, price_child_6_12: d.price_child_6_12 ?? 0, price_child_2_6: d.price_child_2_6 ?? 0, price_infant: d.price_infant ?? 0,
+      })));
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -225,7 +237,6 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
       };
 
       let hotelId = hotel?.id;
-
       if (isEditing && hotel) {
         await updateHotel.mutateAsync({ id: hotel.id, ...hotelData });
       } else {
@@ -234,25 +245,42 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
       }
 
       if (hotelId) {
-        await (supabase as any).from("hotel_available_dates").delete().eq("hotel_id", hotelId);
+        // Clear and update available dates
+        await supabase.from("hotel_available_dates").delete().eq("hotel_id", hotelId);
         if (availableDates.length > 0) {
-          await (supabase as any).from("hotel_available_dates").insert(
-            availableDates.filter(d => d.from_date && d.to_date).map(d => ({ hotel_id: hotelId, from_date: d.from_date, to_date: d.to_date, available_rooms: d.available_rooms || 0 }))
-          );
+          const datesToInsert = availableDates
+            .filter(d => d.from_date && d.to_date)
+            .map(d => ({ 
+              hotel_id: hotelId, 
+              from_date: d.from_date, 
+              to_date: d.to_date, 
+              available_rooms: d.available_rooms || 0 
+            }));
+          if (datesToInsert.length > 0) {
+            await supabase.from("hotel_available_dates").insert(datesToInsert);
+          }
         }
-        await (supabase as any).from("hotel_special_prices").delete().eq("hotel_id", hotelId);
+
+        // Clear and update special prices
+        await supabase.from("hotel_special_prices").delete().eq("hotel_id", hotelId);
         if (specialPrices.length > 0) {
-          await (supabase as any).from("hotel_special_prices").insert(
-            specialPrices.filter(s => s.from_date && s.to_date).map(s => ({
-              hotel_id: hotelId, room_id: s.room_id || null,
-              from_date: s.from_date, to_date: s.to_date,
-              room_rate: s.room_rate, commission: s.commission,
+          const toInsert = specialPrices
+            .filter(s => s.from_date && s.to_date)
+            .map(s => ({
+              hotel_id: hotelId, 
+              room_id: s.room_id || null,
+              from_date: s.from_date, 
+              to_date: s.to_date,
+              room_rate: s.room_rate, 
+              commission: s.commission,
               price_adult: s.price_adult || 0,
               price_child_6_12: s.price_child_6_12 || 0,
               price_child_2_6: s.price_child_2_6 || 0,
               price_infant: s.price_infant || 0,
-            }))
-          );
+            }));
+          if (toInsert.length > 0) {
+            await supabase.from("hotel_special_prices").insert(toInsert);
+          }
         }
 
         // Sync package_hotels: add new links, remove unselected
@@ -656,25 +684,45 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
                   }}>
                     <Plus className="h-3.5 w-3.5" /> Add Room
                   </Button>
-                  <Button type="button" variant="navy" size="sm" className="gap-1" onClick={() => {
-                    if (!hotel?.id) return;
-                    const totalAvail = Math.max(availableDates.reduce((s, d) => s + (d.available_rooms || 0), 0), 4);
-                    const types = [
-                      { room_type: "Single", capacity: 1 },
-                      { room_type: "Double", capacity: 2 },
-                      { room_type: "Double + Extra Bed", capacity: 3 },
-                      { room_type: "Triple", capacity: 3 },
-                    ];
-                    types.forEach(t => createRoom.mutate({
-                      hotel_id: hotel.id, room_type: t.room_type, capacity: t.capacity, price_per_night: 0,
-                      price_adult: 0, price_child: 0, price_child_6: 0, price_infant: 0,
-                      total_rooms: totalAvail, available_rooms: totalAvail,
-                      room_from: 4, room_to: 1,
-                    } as any));
-                    toast.success("All room types added");
-                  }}>
-                    <Plus className="h-3.5 w-3.5" /> Add All Types
-                  </Button>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="blue" size="sm" className="gap-1" onClick={() => {
+                        if (!hotel?.id) return;
+                        const totalAvail = Math.max(availableDates.reduce((s, d) => s + (d.available_rooms || 0), 0), 4);
+                        const standardTypes = [
+                          { room_type: "Single", capacity: 1 },
+                          { room_type: "Double", capacity: 2 },
+                          { room_type: "Double + Extra Bed", capacity: 3 },
+                          { room_type: "Triple", capacity: 3 },
+                        ];
+
+                        standardTypes.forEach(t => {
+                          const sameTypeRooms = hotelRooms.filter(r => r.room_type === t.room_type);
+                          const hasInitial = sameTypeRooms.some(r => ((r as any).room_to ?? 0) === 20 || ((r as any).room_from ?? 0) === 30);
+                          const hasLastTier = sameTypeRooms.some(r => ((r as any).room_to ?? 0) === 1);
+                          
+                          if (hasInitial && hasLastTier) return; // Both tiers already exist
+
+                          createRoom.mutate({
+                            hotel_id: hotel.id, room_type: t.room_type, capacity: t.capacity, price_per_night: 0,
+                            price_adult: 0, price_child: 0, price_child_6: 0, price_infant: 0,
+                            total_rooms: totalAvail, available_rooms: totalAvail,
+                            room_from: hasInitial ? 19 : 30, 
+                            room_to: hasInitial ? 1 : 20,
+                          } as any);
+                        });
+                        toast.success("Processed standard 4 types with tiers (30-20, 19-1)");
+                      }}>
+                        <Plus className="h-3.5 w-3.5" /> Add All Types
+                      </Button>
+                      <Button type="button" variant="destructive" size="sm" onClick={() => {
+                        if (window.confirm("Are you sure you want to delete ALL rooms? This will clear the current list and fix duplicates.")) {
+                          hotelRooms.forEach(r => deleteRoom.mutate(r.id));
+                          toast.success("Cleared all rooms. You can now use 'Add All Types' to start fresh.");
+                        }
+                      }}>
+                        Delete All
+                      </Button>
+                    </div>
                 </div>
               </div>
             ) : (
@@ -686,16 +734,16 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">Room Type</th>
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">Rooms From</th>
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">Rooms To</th>
-                        <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Night</th>
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Adult</th>
-                        <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Child (2-12)</th>
+                        <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Child (6-12)</th>
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Child (2-6)</th>
-                        <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Infant</th>
                         <th className="py-2.5 px-2 w-20"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {hotelRooms.map((room, idx) => (
+                      {hotelRooms
+                        .filter(r => r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant")
+                        .map((room, idx) => (
                         <tr key={room.id} className={`border-t hover:bg-muted/30 transition-colors ${idx % 2 === 1 ? "bg-muted/10" : ""}`}>
                           <td className="py-1.5 px-2">
                             <Select value={room.room_type} onValueChange={v => { if (v !== room.room_type) updateRoom.mutate({ id: room.id, room_type: v }); }}>
@@ -716,24 +764,16 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
                               onBlur={e => { const v = parseInt(e.target.value) || 1; if (v !== (room as any).room_to) updateRoom.mutate({ id: room.id, room_to: v } as any); }} />
                           </td>
                           <td className="py-1.5 px-2">
-                            <Input type="number" className="h-8 text-sm" defaultValue={room.price_per_night}
-                              onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== room.price_per_night) updateRoom.mutate({ id: room.id, price_per_night: v }); }} />
-                          </td>
-                          <td className="py-1.5 px-2">
                             <Input type="number" className="h-8 text-sm" defaultValue={room.price_adult ?? 0}
                               onBlur={e => { const v = parseFloat(e.target.value) || 0; updateRoom.mutate({ id: room.id, price_adult: v }); }} />
-                          </td>
-                          <td className="py-1.5 px-2">
-                            <Input type="number" className="h-8 text-sm" defaultValue={room.price_child ?? 0}
-                              onBlur={e => { const v = parseFloat(e.target.value) || 0; updateRoom.mutate({ id: room.id, price_child: v }); }} />
                           </td>
                           <td className="py-1.5 px-2">
                             <Input type="number" className="h-8 text-sm" defaultValue={room.price_child_6 ?? 0}
                               onBlur={e => { const v = parseFloat(e.target.value) || 0; updateRoom.mutate({ id: room.id, price_child_6: v }); }} />
                           </td>
                           <td className="py-1.5 px-2">
-                            <Input type="number" className="h-8 text-sm" defaultValue={room.price_infant ?? 0}
-                              onBlur={e => { const v = parseFloat(e.target.value) || 0; updateRoom.mutate({ id: room.id, price_infant: v }); }} />
+                            <Input type="number" className="h-8 text-sm" defaultValue={room.price_child ?? 0}
+                              onBlur={e => { const v = parseFloat(e.target.value) || 0; updateRoom.mutate({ id: room.id, price_child: v }); }} />
                           </td>
                           <td className="py-1.5 px-2">
                             <div className="flex gap-1">
@@ -743,9 +783,10 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
                                   if (!hotel?.id) return;
                                   createRoom.mutate({
                                     hotel_id: hotel.id, room_type: room.room_type, capacity: room.capacity,
-                                    price_per_night: room.price_per_night, price_adult: room.price_adult ?? 0,
-                                    price_child: room.price_child ?? 0, price_child_6: room.price_child_6 ?? 0,
-                                    price_infant: room.price_infant ?? 0,
+                                    price_per_night: 0,
+                                    price_adult: room.price_adult ?? 0,
+                                    price_child: room.price_child ?? 0,
+                                    price_child_6: room.price_child_6 ?? 0,
                                     total_rooms: room.total_rooms ?? 10, available_rooms: room.available_rooms ?? 10,
                                     room_from: (room as any).room_from ?? 20, room_to: (room as any).room_to ?? 1,
                                   } as any, { onSuccess: () => toast.success("Room duplicated"), onError: () => toast.error("Failed to duplicate room") });
@@ -777,35 +818,95 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
                   <div className="flex gap-2">
                     <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => {
                       if (!hotel?.id) return;
-                      const totalAvail = Math.max(availableDates.reduce((s, d) => s + (d.available_rooms || 0), 0), 4);
                       createRoom.mutate({
-                        hotel_id: hotel.id, room_type: "Single", capacity: 1, price_per_night: 0,
-                        price_adult: 0, price_child: 0, price_child_6: 0, price_infant: 0,
-                        total_rooms: totalAvail, available_rooms: totalAvail,
-                        room_from: 4, room_to: 1,
+                        hotel_id: hotel.id, room_type: "Double", capacity: 2,
+                        price_per_night: 0,
+                        price_adult: 0, price_child: 0,
+                        total_rooms: 10, available_rooms: 10,
+                        room_from: 10, room_to: 1,
                       } as any, { onSuccess: () => toast.success("Room added"), onError: () => toast.error("Failed to add room") });
                     }}>
                       <Plus className="h-3.5 w-3.5" /> Add Room
                     </Button>
-                    <Button type="button" variant="navy" size="sm" className="gap-1" onClick={() => {
-                      if (!hotel?.id) return;
-                      const totalAvail = Math.max(availableDates.reduce((s, d) => s + (d.available_rooms || 0), 0), 4);
-                      const types = [
-                        { room_type: "Single", capacity: 1 },
-                        { room_type: "Double", capacity: 2 },
-                        { room_type: "Double + Extra Bed", capacity: 3 },
-                        { room_type: "Triple", capacity: 3 },
-                      ];
-                      types.forEach(t => createRoom.mutate({
-                        hotel_id: hotel.id, room_type: t.room_type, capacity: t.capacity, price_per_night: 0,
-                        price_adult: 0, price_child: 0, price_child_6: 0, price_infant: 0,
-                        total_rooms: totalAvail, available_rooms: totalAvail,
-                        room_from: 4, room_to: 1,
-                      } as any));
-                      toast.success(`Added ${types.length} room types`);
-                    }}>
-                      <Plus className="h-3.5 w-3.5" /> Add All Types
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="blue" size="sm" className="gap-1" onClick={() => {
+                        if (!hotel?.id) return;
+                        const standardTypes = [
+                          { room_type: "Single", capacity: 1 },
+                          { room_type: "Double", capacity: 2 },
+                          { room_type: "Double + Extra Bed", capacity: 3 },
+                          { room_type: "Triple", capacity: 3 },
+                        ];
+
+                        const addAll = async () => {
+                          for (const t of standardTypes) {
+                            await createRoom.mutateAsync({
+                              hotel_id: hotel.id, room_type: t.room_type, capacity: t.capacity,
+                              price_per_night: 0,
+                              price_adult: 0, price_child: 0,
+                              total_rooms: 10, available_rooms: 10,
+                              room_from: 10, room_to: 1,
+                            } as any);
+                          }
+                          toast.success("Added all 4 room types");
+                        };
+                        addAll();
+                      }}>
+                        <Plus className="h-3.5 w-3.5" /> Add All Types
+                      </Button>
+                      <Select onValueChange={async (sourceId) => {
+                        const sourceHotel = allHotelsList.find(h => h.id === sourceId);
+                        if (!sourceHotel || !sourceHotel.hotel_rooms || sourceHotel.hotel_rooms.length === 0) {
+                          toast.error("Source hotel has no rooms to copy");
+                          return;
+                        }
+                        
+                        if (window.confirm(`Are you sure you want to copy all ${sourceHotel.hotel_rooms.length} rooms from "${sourceHotel.name}"? This will DELETE all current rooms for this hotel.`)) {
+                          toast.loading("Copying rooms...", { id: "copying-rooms" });
+                          try {
+                            // 1. Delete current rooms
+                            for (const r of hotelRooms) {
+                              await deleteRoom.mutateAsync(r.id);
+                            }
+                            
+                            // 2. Create new rooms
+                            for (const r of sourceHotel.hotel_rooms) {
+                              const { id, created_at, hotel_id, ...roomData } = r;
+                              await createRoom.mutateAsync({
+                                ...roomData,
+                                hotel_id: hotel?.id
+                              } as any);
+                            }
+                            toast.success(`Successfully copied ${sourceHotel.hotel_rooms.length} rooms from ${sourceHotel.name}`, { id: "copying-rooms" });
+                          } catch (err) {
+                            console.error("Failed to copy rooms", err);
+                            toast.error("Failed to copy rooms", { id: "copying-rooms" });
+                          }
+                        }
+                      }}>
+                        <SelectTrigger className="h-8 w-auto text-xs gap-1 border-primary/30 text-primary hover:bg-primary/5">
+                          <Copy className="h-3.5 w-3.5" />
+                          <SelectValue placeholder="Copy from..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allHotelsList
+                            .filter(h => h.id !== hotel?.id)
+                            .map(h => (
+                              <SelectItem key={h.id} value={h.id} className="text-xs">
+                                {h.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="destructive" size="sm" onClick={() => {
+                        if (window.confirm("Are you sure you want to delete ALL rooms?")) {
+                          hotelRooms.forEach(r => deleteRoom.mutate(r.id));
+                          toast.success("Cleared all rooms.");
+                        }
+                      }}>
+                        Delete All
+                      </Button>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {hotelRooms.length} room type{hotelRooms.length !== 1 ? "s" : ""}
@@ -827,93 +928,226 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
               </div>
             )}
 
-            {specialPrices.map((sp, idx) => (
-              <div key={idx} className={`p-2 rounded-md border ${idx % 2 === 0 ? "bg-card" : "bg-muted/10"}`}>
-                <div className="grid grid-cols-[1fr_1fr_1.2fr_0.8fr_0.8fr_0.7fr_0.7fr_0.7fr_0.7fr_28px] gap-1.5 items-end">
-                  <div className="space-y-0.5">
-                    <Label className="text-[10px] text-muted-foreground">From</Label>
-                    <DateInput value={sp.from_date} onValueChange={(iso) => {
-                      const updated = [...specialPrices]; updated[idx].from_date = iso; setSpecialPrices(updated);
-                    }} className="h-7 text-xs" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-[10px] text-muted-foreground">To</Label>
-                    <DateInput value={sp.to_date} onValueChange={(iso) => {
-                      const updated = [...specialPrices]; updated[idx].to_date = iso; setSpecialPrices(updated);
-                    }} className="h-7 text-xs" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-[10px] text-muted-foreground">Room</Label>
-                    <Select value={sp.room_id} onValueChange={v => {
-                      const updated = [...specialPrices]; updated[idx].room_id = v; setSpecialPrices(updated);
-                    }}>
-                      <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Room" /></SelectTrigger>
-                      <SelectContent>
-                        {hotelRooms.map(r => (
-                          <SelectItem key={r.id} value={r.id}>{r.room_type}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-[10px] text-muted-foreground">Rate $</Label>
-                    <Input type="number" value={sp.room_rate} onChange={e => {
-                      const updated = [...specialPrices]; updated[idx].room_rate = parseFloat(e.target.value) || 0; setSpecialPrices(updated);
-                    }} className="h-7 text-xs px-2" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-[10px] text-muted-foreground">Adult</Label>
-                    <Input type="number" min="0" value={sp.price_adult} onChange={e => {
-                      const updated = [...specialPrices]; updated[idx].price_adult = parseFloat(e.target.value) || 0; setSpecialPrices(updated);
-                    }} className="h-7 text-xs px-2" placeholder="0" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-[10px] text-muted-foreground">CHD 6-12</Label>
-                    <Input type="number" min="0" value={sp.price_child_6_12} onChange={e => {
-                      const updated = [...specialPrices]; updated[idx].price_child_6_12 = parseFloat(e.target.value) || 0; setSpecialPrices(updated);
-                    }} className="h-7 text-xs px-2" placeholder="0" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-[10px] text-muted-foreground">CHD 2-6</Label>
-                    <Input type="number" min="0" value={sp.price_child_2_6} onChange={e => {
-                      const updated = [...specialPrices]; updated[idx].price_child_2_6 = parseFloat(e.target.value) || 0; setSpecialPrices(updated);
-                    }} className="h-7 text-xs px-2" placeholder="0" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <Label className="text-[10px] text-muted-foreground">Infant</Label>
-                    <Input type="number" min="0" value={sp.price_infant} onChange={e => {
-                      const updated = [...specialPrices]; updated[idx].price_infant = parseFloat(e.target.value) || 0; setSpecialPrices(updated);
-                    }} className="h-7 text-xs px-2" placeholder="0" />
-                  </div>
-                  <ConfirmDelete itemName="this special price row" onConfirm={() => setSpecialPrices(prev => prev.filter((_, i) => i !== idx))}>
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive">
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </ConfirmDelete>
-                </div>
-              </div>
-            ))}
+            {specialPrices.length > 0 && (
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50 border-b">
+                      <th className="text-left py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">From Date</th>
+                      <th className="text-left py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">To Date</th>
+                      <th className="text-left py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Room Type</th>
+                      <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Rooms From</th>
+                      <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Rooms To</th>
+                      <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">$/Adult</th>
+                      <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">$/Child (6-12)</th>
+                      <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">$/Child (2-6)</th>
+                      <th className="py-3 px-3 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {specialPrices.map((sp, idx) => {
+                      const selectedRoom = hotelRooms.find(r => r.id === sp.room_id);
+                      return (
+                        <tr key={idx} className={`border-b hover:bg-muted/30 transition-colors ${idx % 2 === 1 ? "bg-muted/5" : ""}`}>
+                          <td className="py-2 px-3">
+                            <DateInput value={sp.from_date} onValueChange={(iso) => {
+                              const updated = [...specialPrices]; updated[idx].from_date = iso; setSpecialPrices(updated);
+                            }} className="h-9 text-xs border-slate-200" />
+                          </td>
+                          <td className="py-2 px-3">
+                            <DateInput value={sp.to_date} onValueChange={(iso) => {
+                              const updated = [...specialPrices]; updated[idx].to_date = iso; setSpecialPrices(updated);
+                            }} className="h-9 text-xs border-slate-200" />
+                          </td>
+                          <td className="py-2 px-3">
+                            <Select 
+                              value={sp.room_id || ""} 
+                              onValueChange={newRoomId => {
+                                const updated = [...specialPrices];
+                                const newRoom = hotelRooms.find(r => r.id === newRoomId);
+                                if (newRoom) {
+                                  updated[idx].room_id = newRoom.id;
+                                  updated[idx].price_adult = newRoom.price_adult || 0;
+                                  updated[idx].price_child_6_12 = newRoom.price_child_6 || 0;
+                                  updated[idx].price_child_2_6 = newRoom.price_child || 0;
+                                  setSpecialPrices(updated);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-9 text-xs font-medium bg-white border-slate-200 w-[200px]">
+                                <SelectValue placeholder="Room Type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {Array.from(new Set(hotelRooms.map(r => r.room_type)))
+                                  .filter(t => t && t !== "Quadruple" && t !== "Without-Bed" && t !== "Infant")
+                                  .map(typeName => {
+                                    const firstRoom = hotelRooms.find(r => r.room_type === typeName);
+                                    return (
+                                      <SelectItem key={typeName} value={firstRoom?.id || typeName}>
+                                        {typeName}
+                                      </SelectItem>
+                                    );
+                                  })}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="py-2 px-3">
+                            <Input 
+                              type="number" 
+                              className="h-9 text-xs px-2 w-16 mx-auto text-center border-slate-200 bg-white" 
+                              defaultValue={selectedRoom?.room_from ?? 0}
+                              onBlur={e => {
+                                const v = parseInt(e.target.value) || 0;
+                                if (selectedRoom && v !== selectedRoom.room_from) {
+                                  updateRoom.mutate({ id: selectedRoom.id, room_from: v } as any);
+                                }
+                              }}
+                            />
+                          </td>
+                          <td className="py-2 px-3">
+                            <Input 
+                              type="number" 
+                              className="h-9 text-xs px-2 w-16 mx-auto text-center border-slate-200 bg-white" 
+                              defaultValue={selectedRoom?.room_to ?? 0}
+                              onBlur={e => {
+                                const v = parseInt(e.target.value) || 0;
+                                if (selectedRoom && v !== selectedRoom.room_to) {
+                                  updateRoom.mutate({ id: selectedRoom.id, room_to: v } as any);
+                                }
+                              }}
+                            />
+                          </td>
 
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setSpecialPrices(prev => [...prev, { from_date: "", to_date: "", room_id: "", room_rate: 0, commission: 0, price_adult: 0, price_child_6_12: 0, price_child_2_6: 0, price_infant: 0 }])} className="gap-1">
-                <Plus className="h-3.5 w-3.5" /> Add Special Price
-              </Button>
-              <Button type="button" variant="navy" size="sm" className="gap-1" onClick={() => {
-                if (hotelRooms.length === 0) { toast.error("Add room types in Default Prices tab first"); return; }
-                const lastFrom = specialPrices.length > 0 ? specialPrices[specialPrices.length - 1].from_date : "";
-                const lastTo = specialPrices.length > 0 ? specialPrices[specialPrices.length - 1].to_date : "";
-                const existingForDates = new Set(
-                  specialPrices.filter(sp => sp.from_date === lastFrom && sp.to_date === lastTo).map(sp => sp.room_id)
-                );
-                const toAdd = hotelRooms
-                  .filter(r => !existingForDates.has(r.id))
-                  .map(r => ({ from_date: lastFrom, to_date: lastTo, room_id: r.id, room_rate: 0, commission: 0, price_adult: 0, price_child_6_12: 0, price_child_2_6: 0, price_infant: 0 }));
-                if (toAdd.length === 0) { toast.info("All room types already added for these dates"); return; }
-                setSpecialPrices(prev => [...prev, ...toAdd]);
-                toast.success(`Added ${toAdd.length} room type${toAdd.length > 1 ? "s" : ""}`);
-              }}>
-                <Plus className="h-3.5 w-3.5" /> Add All Rooms
-              </Button>
+                          <td className="py-2 px-3">
+                             <Input type="number" className="h-9 text-xs px-2 w-20 mx-auto text-center border-slate-200" value={sp.price_adult} onChange={e => {
+                               const updated = [...specialPrices]; updated[idx].price_adult = parseFloat(e.target.value) || 0; setSpecialPrices(updated);
+                             }} />
+                           </td>
+                          <td className="py-2 px-3">
+                            <Input type="number" className="h-9 text-xs px-2 w-20 mx-auto text-center border-slate-200" value={sp.price_child_6_12} onChange={e => {
+                              const updated = [...specialPrices]; updated[idx].price_child_6_12 = parseFloat(e.target.value) || 0; setSpecialPrices(updated);
+                            }} />
+                          </td>
+                          <td className="py-2 px-3">
+                            <Input type="number" className="h-9 text-xs px-2 w-20 mx-auto text-center border-slate-200" value={sp.price_child_2_6} onChange={e => {
+                              const updated = [...specialPrices]; updated[idx].price_child_2_6 = parseFloat(e.target.value) || 0; setSpecialPrices(updated);
+                            }} />
+                          </td>
+                          <td className="py-2 px-3 text-center">
+
+                          <ConfirmDelete itemName="this special price row" onConfirm={() => setSpecialPrices(prev => prev.filter((_, i) => i !== idx))}>
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </ConfirmDelete>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex justify-between items-end">
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setSpecialPrices(prev => [...prev, { from_date: "", to_date: "", room_id: "", commission: 0, price_adult: 0, price_child_6_12: 0, price_child_2_6: 0 }])} className="gap-1">
+                  <Plus className="h-3.5 w-3.5" /> Add Special Price
+                </Button>
+                <Button type="button" variant="navy" size="sm" className="gap-1" onClick={async () => {
+                  if (hotelRooms.length === 0) { toast.error("Add room types in Default Prices tab first"); return; }
+                  const lastFrom = specialPrices.length > 0 ? specialPrices[specialPrices.length - 1].from_date : "";
+                  const lastTo = specialPrices.length > 0 ? specialPrices[specialPrices.length - 1].to_date : "";
+                  
+                  // Keep it to the standard 4 unique types in the Special Prices UI
+                  const uniqueTypes = Array.from(new Set(hotelRooms.map(r => r.room_type)));
+                  const existingForDates = new Set(
+                    specialPrices.filter(sp => sp.from_date === lastFrom && sp.to_date === lastTo)
+                      .map(sp => {
+                        const r = hotelRooms.find(room => room.id === sp.room_id);
+                        return r ? r.room_type : null;
+                      }).filter(Boolean)
+                  );
+                  
+                  const toAddTypes = uniqueTypes.filter(t => !existingForDates.has(t));
+
+                  if (toAddTypes.length === 0) {
+                    toast.info("All 4 room types already added for these dates.");
+                    return;
+                  }
+
+                  const toAdd = toAddTypes.map(typeName => {
+                    // Find the FIRST tier of this type (usually the one with the highest 'room_from')
+                    const r = hotelRooms
+                      .filter(room => room.room_type === typeName)
+                      .sort((a, b) => (b as any).room_from - (a as any).room_from)[0];
+                      
+                    if (!r) return null;
+                    return {
+                      from_date: lastFrom, to_date: lastTo, room_id: r.id,
+                      commission: 0,
+                      price_adult: r.price_adult || 0, 
+                      price_child_6_12: r.price_child_6 || 0,
+                      price_child_2_6: r.price_child || 0
+                    };
+                  }).filter(Boolean);
+
+                  setSpecialPrices(prev => [...prev, ...toAdd as any]);
+                  toast.success(`Added ${toAdd.length} room types`);
+                }}>
+                  <Plus className="h-3.5 w-3.5" /> Add All Types
+                </Button>
+                <Select onValueChange={(sourceId) => {
+                  const sourceHotel = allHotelsList.find(h => h.id === sourceId);
+                  if (!sourceHotel || !sourceHotel.hotel_special_prices || sourceHotel.hotel_special_prices.length === 0) {
+                    toast.error("Source hotel has no special prices to copy");
+                    return;
+                  }
+                  
+                  if (window.confirm(`Are you sure you want to copy all ${sourceHotel.hotel_special_prices.length} special prices from "${sourceHotel.name}"? This will APPEND them to your current list.`)) {
+                    const toAdd = sourceHotel.hotel_special_prices.map(sp => {
+                      // Find the room in the SOURCE hotel to get its type
+                      const sourceRoom = sourceHotel.hotel_rooms?.find(r => r.id === sp.room_id);
+                      if (!sourceRoom) return null;
+                      
+                      // Find the matching room type in the TARGET (current) hotel
+                      const targetRoom = hotelRooms.find(r => r.room_type === sourceRoom.room_type);
+                      if (!targetRoom) return null;
+                      
+                      const { id, created_at, hotel_id, ...spData } = sp;
+                      return {
+                        ...spData,
+                        room_id: targetRoom.id
+                      };
+                    }).filter(Boolean);
+                    
+                    if (toAdd.length === 0) {
+                      toast.error("No matching room types found between hotels");
+                      return;
+                    }
+                    
+                    setSpecialPrices(prev => [...prev, ...toAdd as any]);
+                    toast.success(`Successfully copied ${toAdd.length} special prices from ${sourceHotel.name}`);
+                  }
+                }}>
+                  <SelectTrigger className="h-8 w-auto text-xs gap-1 border-primary/30 text-primary hover:bg-primary/5">
+                    <Copy className="h-3.5 w-3.5" />
+                    <SelectValue placeholder="Copy from..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allHotelsList
+                      .filter(h => h.id !== hotel?.id)
+                      .map(h => (
+                        <SelectItem key={h.id} value={h.id} className="text-xs">
+                          {h.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-[10px] text-muted-foreground italic">
+                * Prices are per night. Ranges are inclusive and editable.
+              </p>
             </div>
           </TabsContent>
 

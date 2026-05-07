@@ -468,7 +468,7 @@ const Settings = () => {
                       <Input 
                         value={voucherSettings.primaryColor}
                         onChange={(e) => updateVoucherSettings({ primaryColor: e.target.value })}
-                        className="font-mono flex-1"
+                        className="font-sans font-medium flex-1"
                       />
                     </div>
                   </div>
@@ -621,7 +621,7 @@ const Settings = () => {
                       <Input 
                         value={companySettings.primaryColor}
                         onChange={(e) => updateCompanySettings({ primaryColor: e.target.value })}
-                        className="font-mono flex-1"
+                        className="font-sans font-medium flex-1"
                       />
                     </div>
                   </div>
@@ -637,7 +637,7 @@ const Settings = () => {
                       <Input 
                         value={companySettings.accentColor}
                         onChange={(e) => updateCompanySettings({ accentColor: e.target.value })}
-                        className="font-mono flex-1"
+                        className="font-sans font-medium flex-1"
                       />
                     </div>
                   </div>
@@ -685,6 +685,67 @@ const Settings = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Department Notification Emails */}
+          {isAdmin && (
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="h-5 w-5" />
+                  Department Notification Emails
+                </CardTitle>
+                <CardDescription>Configure which emails receive internal notifications</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="dept-ops">Operations Team</Label>
+                    <Input 
+                      id="dept-ops" 
+                      type="email" 
+                      value={companySettings.departmentEmails.ops}
+                      onChange={(e) => updateCompanySettings({ 
+                        departmentEmails: { ...companySettings.departmentEmails, ops: e.target.value } 
+                      })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dept-visa">Visa Department</Label>
+                    <Input 
+                      id="dept-visa" 
+                      type="email" 
+                      value={companySettings.departmentEmails.visa}
+                      onChange={(e) => updateCompanySettings({ 
+                        departmentEmails: { ...companySettings.departmentEmails, visa: e.target.value } 
+                      })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dept-finance">Finance Team</Label>
+                    <Input 
+                      id="dept-finance" 
+                      type="email" 
+                      value={companySettings.departmentEmails.finance}
+                      onChange={(e) => updateCompanySettings({ 
+                        departmentEmails: { ...companySettings.departmentEmails, finance: e.target.value } 
+                      })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dept-tech">Technical Support</Label>
+                    <Input 
+                      id="dept-tech" 
+                      type="email" 
+                      value={companySettings.departmentEmails.technical}
+                      onChange={(e) => updateCompanySettings({ 
+                        departmentEmails: { ...companySettings.departmentEmails, technical: e.target.value } 
+                      })}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Localization */}
           <Card className="shadow-card">

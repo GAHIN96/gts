@@ -27,34 +27,50 @@ export const useAgencies = () => {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching agencies:", error);
+        throw error;
+      }
 
       // Fetch profiles and stats for each agency
       const agenciesWithDetails = await Promise.all(
         (agencies || []).map(async (agency) => {
-          // Get profile info
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("email, full_name, phone")
-            .eq("id", agency.user_id)
-            .single();
+          try {
+            // Get profile info
+            const { data: profile, error: profileError } = await supabase
+              .from("profiles")
+              .select("email, full_name, phone")
+              .eq("id", agency.user_id)
+              .maybeSingle();
 
-          // Get booking stats
-          const { data: bookings } = await supabase
-            .from("bookings")
-            .select("total_amount, status")
-            .eq("user_id", agency.user_id);
+            if (profileError) console.warn(`Error fetching profile for agency ${agency.id}:`, profileError);
 
-          const confirmedBookings = bookings?.filter(b => b.status === "confirmed") || [];
-          
-          return {
-            ...agency,
-            profiles: profile || null,
-            bookingStats: {
-              totalBookings: bookings?.length || 0,
-              totalRevenue: confirmedBookings.reduce((sum, b) => sum + b.total_amount, 0),
-            },
-          } as Agency;
+            // Get booking stats
+            const { data: bookings, error: bookingsError } = await supabase
+              .from("bookings")
+              .select("total_amount, status")
+              .eq("user_id", agency.user_id);
+
+            if (bookingsError) console.warn(`Error fetching bookings for agency ${agency.id}:`, bookingsError);
+
+            const confirmedBookings = bookings?.filter(b => b.status === "confirmed") || [];
+            
+            return {
+              ...agency,
+              profiles: profile || null,
+              bookingStats: {
+                totalBookings: bookings?.length || 0,
+                totalRevenue: confirmedBookings.reduce((sum, b) => sum + b.total_amount, 0),
+              },
+            } as Agency;
+          } catch (err) {
+            console.error(`Unexpected error processing agency ${agency.id}:`, err);
+            return {
+              ...agency,
+              profiles: null,
+              bookingStats: { totalBookings: 0, totalRevenue: 0 }
+            } as Agency;
+          }
         })
       );
 

@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import hotelHeroImg from "@/assets/hotel-hero.jpg";
-import { pickRoomBand } from "@/lib/roomPricingTier";
-import { getStayWindowRemaining } from "@/lib/hotelAvailability";
-import { 
+import { pickRoomBand, resolveRoomPrice } from "@/lib/roomPricingTier";
+import { getStayWindowRemaining, buildDayDetails } from "@/lib/hotelAvailability";
+import {
   Calendar,
   Users,
   Search,
@@ -64,7 +64,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { AvailabilityCalendar } from "@/components/ui/availability-calendar";
-import { format, addDays, parseISO, differenceInDays } from "date-fns";
+import { format, addDays, parseISO, differenceInDays, startOfDay } from "date-fns";
 import { useHotels, Hotel as HotelType } from "@/hooks/useHotels";
 import { useHotelAvailableDates } from "@/hooks/useHotelAvailableDates";
 import { useHotelBookings } from "@/hooks/useHotelBookings";
@@ -80,6 +80,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -127,9 +128,10 @@ const amenityIconMap: Record<string, React.ElementType> = {
 };
 
 function getAmenityIcon(amenity: string): React.ElementType {
-  const key = amenity.toLowerCase().trim();
+  if (!amenity) return Sparkles;
+  const key = String(amenity).toLowerCase().trim();
   for (const [match, icon] of Object.entries(amenityIconMap)) {
-    if (key.includes(match)) return icon;
+    if (key && match && key.includes(match)) return icon;
   }
   return Sparkles;
 }
@@ -197,20 +199,37 @@ function getRoomTypeFromConfig(adults: number, children: number): string {
 function getHotelRoomPrice(
   hotel: HotelType,
   neededType: string,
-  requestedRooms: number = 1,
-  availableInPeriod: number | null = null,
+  roomConfigs: RoomConfig[] = [],
+  checkIn?: Date,
+  checkOut?: Date,
+  hotelAvailableDates: any[] = [],
+  hotelBookings: any[] = [],
 ): number {
-  const rooms = (hotel.hotel_rooms || []).filter(r => r.is_active !== false);
-  const picked = pickRoomBand(rooms as any, neededType, requestedRooms, availableInPeriod);
-  const pickPrice = (r: any) => Number(r?.price_per_night) || Number(r?.price_adult) || 0;
-  const p = pickPrice(picked);
-  if (p > 0) return p;
-  if (rooms.length > 0) {
-    const prices = rooms.map(pickPrice).filter(v => v > 0);
-    if (prices.length) return Math.min(...prices);
+  const rooms = (hotel.hotel_rooms || []).filter(r => r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
+  const specials = (hotel as any).hotel_special_prices || [];
+  const requestedRooms = roomConfigs.length || 1;
+  const firstRoom = roomConfigs[0] || { adults: 1, children6to12: 0, children2to6: 0, infants: 0 };
+
+  // PHASE 1: Date & Inventory Verification
+  // If no dates, we can't do inventory-driven, fall back to "cheapest" or "tier 1"
+  if (!checkIn || !checkOut) {
+    // Default to the first tier (highest inventory band) or cheapest
+    const picked = pickRoomBand(rooms as any, neededType, 20); // Assume high inventory
+    return Number(picked?.price_adult || picked?.price_per_night || hotel.price_per_night || 0);
   }
-  return hotel.price_per_night || 0;
+
+  // PHASE 2 & 3: Match Tier based on Inventory and return price
+  const dayDetails = buildDayDetails(hotelAvailableDates, hotelBookings, hotel.id);
+  const dayKey = format(checkIn, "yyyy-MM-dd");
+  const inventoryRemaining = dayDetails[dayKey]?.remaining ?? 0;
+
+  const resolved = resolveRoomPrice(rooms as any, neededType, inventoryRemaining, specials, checkIn);
+  if (!resolved) return hotel.price_per_night || 0;
+
+  // Per-room rate: use the adult rate as the flat room price (not per-person)
+  return resolved.adult;
 }
+
 
 /**
  * Sum the per-night price across the stay range using hotel_special_prices
@@ -221,48 +240,52 @@ function getHotelRoomPrice(
 function getHotelStayPricing(
   hotel: HotelType,
   neededType: string,
-  requestedRooms: number,
-  availableInPeriod: number | null,
+  roomConfigs: RoomConfig[],
   checkIn?: Date,
   checkOut?: Date,
+  hotelAvailableDates: any[] = [],
+  hotelBookings: any[] = [],
 ): { total: number; nights: number; avg: number } | null {
   if (!checkIn || !checkOut) return null;
   const nights = Math.max(0, differenceInDays(checkOut, checkIn));
   if (nights <= 0) return null;
 
-  const rooms = (hotel.hotel_rooms || []).filter((r: any) => r.is_active !== false);
-  // Availability-driven tier — the inventory window's remaining rooms drive
-  // which default-rate band the night falls into.
-  const picked: any = pickRoomBand(rooms as any, neededType, requestedRooms, availableInPeriod);
-  const defaultPrice =
-    Number(picked?.price_per_night) ||
-    Number(picked?.price_adult) ||
-    getHotelRoomPrice(hotel, neededType, requestedRooms, availableInPeriod);
-
+  const rooms = (hotel.hotel_rooms || []).filter((r: any) => r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
   const specials: any[] = (hotel as any).hotel_special_prices || [];
-  // Only consider specials that match the picked room (or hotel-wide if no room_id)
-  const relevant = specials.filter(
-    (s) => !s.room_id || (picked?.id && s.room_id === picked.id),
-  );
+  const dayDetails = buildDayDetails(hotelAvailableDates, hotelBookings, hotel.id);
 
-  let total = 0;
+  let totalForAllRooms = 0;
+  const requestedRooms = roomConfigs.length;
+
+  // Calculate the bottleneck (minimum) inventory across the entire stay
+  // This ensures the whole stay is priced at the tier shown in the UI summary.
+  let bottleneckInventory = Number.MAX_SAFE_INTEGER;
   for (let i = 0; i < nights; i++) {
     const night = addDays(checkIn, i);
-    const nightTime = night.getTime();
-    const match = relevant.find((s) => {
-      const from = s.from_date ? new Date(s.from_date).getTime() : -Infinity;
-      const to = s.to_date ? new Date(s.to_date).getTime() : Infinity;
-      return nightTime >= from && nightTime <= to;
-    });
-    const nightlyRate = match
-      ? Number(match.room_rate) || Number(match.price_adult) || defaultPrice
-      : defaultPrice;
-    total += nightlyRate;
+    const dayKey = format(night, "yyyy-MM-dd");
+    const inv = dayDetails[dayKey]?.remaining ?? 0;
+    if (inv < bottleneckInventory) bottleneckInventory = inv;
+  }
+  if (bottleneckInventory === Number.MAX_SAFE_INTEGER) bottleneckInventory = 0;
+
+  for (let rIdx = 0; rIdx < requestedRooms; rIdx++) {
+    const config = roomConfigs[rIdx];
+    for (let i = 0; i < nights; i++) {
+      const night = addDays(checkIn, i);
+      const resolved = resolveRoomPrice(rooms as any, neededType, bottleneckInventory, specials, night);
+      if (resolved) {
+        // Per-room rate: the adult price is the flat room rate (not per-person)
+        totalForAllRooms += resolved.adult;
+      } else {
+        totalForAllRooms += hotel.price_per_night || 0;
+      }
+    }
   }
 
-  const avg = total / nights;
-  return { total, nights, avg };
+  const avgPerRoom = totalForAllRooms / Math.max(1, requestedRooms) / nights;
+  return { total: totalForAllRooms, nights, avg: avgPerRoom };
 }
+
 
 interface HotelSearchSectionProps {
   onHotelSelect?: (hotel: HotelType, searchParams: { checkIn?: Date; checkOut?: Date; guests: number; rooms: number; adults: number; children: number; infants: number; roomConfigs?: RoomConfig[] }) => void;
@@ -289,7 +312,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     return () => document.removeEventListener("mousedown", handler);
   }, [destinationOpen]);
   const [guestsOpen, setGuestsOpen] = useState(false);
-  
+
   // Search results state
   const [showResults, setShowResults] = useState(false);
   const [searchedHotels, setSearchedHotels] = useState<HotelType[]>([]);
@@ -312,8 +335,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
   // View mode: list, location-grouped, or map
   const [viewMode, setViewMode] = useState<"list" | "location" | "map">("list");
 
-  // Room type expandable state
-  const [expandedRoomTypes, setExpandedRoomTypes] = useState<Set<string>>(new Set());
+
 
   // Quick-view modal state
   const [quickViewHotel, setQuickViewHotel] = useState<HotelType | null>(null);
@@ -465,11 +487,12 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
   const priceBounds = useMemo(() => {
     if (!searchedHotels.length) return { min: 0, max: 5000 };
     const prices = searchedHotels
-      .map(h => getHotelRoomPrice(h, searchedRoomType, roomCount, computePeriodAvail(h)))
+      .map(h => getHotelRoomPrice(h, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings))
       .filter(p => p > 0);
     if (!prices.length) return { min: 0, max: 5000 };
     return { min: Math.floor(Math.min(...prices)), max: Math.ceil(Math.max(...prices)) };
-  }, [searchedHotels, searchedRoomType, roomCount, computePeriodAvail]);
+  }, [searchedHotels, searchedRoomType, roomCount]);
+
 
   // Reset price range when results change
   useEffect(() => {
@@ -514,8 +537,11 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     if (!hotels) return { available, limited, soldOut };
 
     const relevantHotels = hotels.filter(h => {
-      if (!h.is_active) return false;
-      if (destination && !h.name.toLowerCase().includes(destination.toLowerCase()) && !h.cities?.name?.toLowerCase().includes(destination.toLowerCase())) return false;
+      if (!h || !h.is_active) return false;
+      const hName = (h.name || "").toLowerCase();
+      const cName = (h.cities?.name || "").toLowerCase();
+      const d = (destination || "").toLowerCase();
+      if (d && !hName.includes(d) && !cName.includes(d)) return false;
       return true;
     });
 
@@ -550,8 +576,11 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     if (!hotels) return { available, limited, soldOut };
 
     const relevantHotels = hotels.filter(h => {
-      if (!h.is_active) return false;
-      if (destination && !h.name.toLowerCase().includes(destination.toLowerCase()) && !h.cities?.name?.toLowerCase().includes(destination.toLowerCase())) return false;
+      if (!h || !h.is_active) return false;
+      const hName = (h.name || "").toLowerCase();
+      const cName = (h.cities?.name || "").toLowerCase();
+      const d = (destination || "").toLowerCase();
+      if (d && !hName.includes(d) && !cName.includes(d)) return false;
       return true;
     });
 
@@ -581,9 +610,11 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
   const handleHotelSearch = async () => {
     if (!hotels) return;
-    if (!destination) { toast.error("Please select a destination", { description: "Choose a city or hotel name to search" }); return; }
-    if (!checkIn) { toast.error("Please select check-in date", { description: "Choose when you want to check in" }); return; }
-    if (!checkOut) { toast.error("Please select check-out date", { description: "Choose when you want to check out" }); return; }
+    setIsSearching(true);
+    setShowResults(false);
+    if (!destination) { toast.error("Please select a destination", { description: "Choose a city or hotel name to search" }); setIsSearching(false); return; }
+    if (!checkIn) { toast.error("Please select check-in date", { description: "Choose when you want to check in" }); setIsSearching(false); return; }
+    if (!checkOut) { toast.error("Please select check-out date", { description: "Choose when you want to check out" }); setIsSearching(false); return; }
 
     // Save to recent searches
     const recentEntry: RecentSearch = {
@@ -598,21 +629,26 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     saveRecentSearch(recentEntry);
     setRecentSearches(loadRecentSearches());
 
-    setIsSearching(true);
-    setShowResults(false);
     setCompareIds([]);
-    setExpandedRoomTypes(new Set());
-    
+
+
     await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    let results = hotels.filter(h => h.is_active);
-    if (destination) {
-      results = results.filter(h => 
-        h.name.toLowerCase().includes(destination.toLowerCase()) ||
-        h.cities?.name?.toLowerCase().includes(destination.toLowerCase())
-      );
+
+    if (!hotels || !Array.isArray(hotels)) {
+      setIsSearching(false);
+      return;
     }
-    
+
+    let results = hotels.filter(h => h && h.is_active);
+    if (destination) {
+      const d = destination.toLowerCase();
+      results = results.filter(h => {
+        const hName = (h.name || "").toLowerCase();
+        const cName = (h.cities?.name || "").toLowerCase();
+        return hName.includes(d) || cName.includes(d);
+      });
+    }
+
     setSearchedHotels(results);
     setIsSearching(false);
     setShowResults(true);
@@ -637,6 +673,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
   // Filtered & sorted hotels
   const filteredHotels = useMemo(() => {
+    if (!showResults) return [];
     let list = [...searchedHotels];
 
     // Hide hotels with no remaining inventory for the searched window.
@@ -657,29 +694,38 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
     // Price filter
     list = list.filter(h => {
-      const price = getHotelRoomPrice(h, searchedRoomType, roomCount, computePeriodAvail(h));
+      const price = getHotelRoomPrice(h, searchedRoomType, roomCount, checkIn, checkOut, hotelAvailableDates, hotelBookings);
       return price >= priceRange[0] && price <= priceRange[1];
     });
 
+
     // Amenity filter
     if (selectedAmenities.length > 0) {
-      list = list.filter(h => {
-        if (!h.amenities) return false;
-        const lower = h.amenities.map(a => a.toLowerCase());
-        return selectedAmenities.every(sa => lower.some(a => a.includes(sa.toLowerCase())));
-      });
+      list = list.filter(h => 
+        selectedAmenities.every(a => 
+          h.amenities?.some(ha => 
+            ha && ha.toLowerCase().includes(String(a).toLowerCase())
+          )
+        )
+      );
     }
 
     // Sort
     list.sort((a, b) => {
-      const priceA = getHotelRoomPrice(a, searchedRoomType, roomCount, computePeriodAvail(a));
-      const priceB = getHotelRoomPrice(b, searchedRoomType, roomCount, computePeriodAvail(b));
-      switch (sortBy) {
-        case "price-asc": return priceA - priceB;
-        case "price-desc": return priceB - priceA;
-        case "rating": return (b.star_rating || 0) - (a.star_rating || 0);
-        case "name": return a.name.localeCompare(b.name);
-        default: return 0;
+      try {
+        const priceA = getHotelRoomPrice(a, searchedRoomType, roomCount, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+        const priceB = getHotelRoomPrice(b, searchedRoomType, roomCount, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+        switch (sortBy) {
+          case "price-asc": return priceA - priceB;
+          case "price-desc": return priceB - priceA;
+          case "rating": return (b.star_rating || 0) - (a.star_rating || 0);
+          case "name": return (a.name || "").localeCompare(b.name || "");
+          default: return 0;
+        }
+
+      } catch (err) {
+        console.error("Sorting error:", err);
+        return 0;
       }
     });
 
@@ -702,9 +748,10 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     if (filteredHotels.length === 0) return null;
     const withPrices = filteredHotels.map(h => ({
       id: h.id,
-      price: getHotelRoomPrice(h, searchedRoomType, roomCount, computePeriodAvail(h)),
+      price: getHotelRoomPrice(h, searchedRoomType, roomCount, checkIn, checkOut, hotelAvailableDates, hotelBookings),
       stars: h.star_rating || 0,
     })).filter(h => h.price > 0);
+
     if (withPrices.length === 0) return null;
 
     // Best Price = cheapest
@@ -771,15 +818,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     });
   };
 
-  // Toggle room type expansion
-  const toggleRoomExpand = (hotelId: string) => {
-    setExpandedRoomTypes(prev => {
-      const next = new Set(prev);
-      if (next.has(hotelId)) next.delete(hotelId);
-      else next.add(hotelId);
-      return next;
-    });
-  };
+
 
   // Open quick view
   const openQuickView = (e: React.MouseEvent, hotel: HotelType) => {
@@ -849,8 +888,8 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
           y = 20;
         }
 
-        const stayPricing = getHotelStayPricing(hotel, searchedRoomType, roomCount, computePeriodAvail(hotel), checkIn, checkOut);
-        const price = stayPricing ? Math.round(stayPricing.avg) : getHotelRoomPrice(hotel, searchedRoomType, roomCount, computePeriodAvail(hotel));
+        const stayPricing = getHotelStayPricing(hotel, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+        const price = stayPricing ? Math.round(stayPricing.avg) : getHotelRoomPrice(hotel, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
         const totalPrice = stayPricing ? Math.round(stayPricing.total) : null;
         const stars = "★".repeat(hotel.star_rating || 0);
 
@@ -951,11 +990,10 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
             <button
               key={s}
               onClick={() => setMinStars(s)}
-              className={`flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                minStars === s
+              className={`flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border ${minStars === s
                   ? "bg-primary text-primary-foreground border-primary shadow-sm"
                   : "bg-muted/50 text-muted-foreground border-transparent hover:bg-muted"
-              }`}
+                }`}
             >
               {s === 0 ? "All" : (
                 <>
@@ -1022,21 +1060,19 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     </div>
   );
 
-  const STANDARD_ROOM_TYPES = ["single", "double", "triple", "extra bed", "double + extra bed"];
+
 
   // Render a single hotel card
   const renderHotelCard = (hotel: HotelType, index: number) => {
     const isBestPrice = resultStats?.bestPriceId === hotel.id;
     const isBestValue = resultStats?.bestValueId === hotel.id;
     const totalRooms = getTotalAvailableRooms(hotel);
-    const stayPricing = getHotelStayPricing(hotel, searchedRoomType, roomCount, computePeriodAvail(hotel), checkIn, checkOut);
-    const price = stayPricing ? Math.round(stayPricing.avg) : getHotelRoomPrice(hotel, searchedRoomType, roomCount, computePeriodAvail(hotel));
-    const totalPrice = stayPricing ? Math.round(stayPricing.total * Math.max(1, roomCount)) : null;
+    const stayPricing = getHotelStayPricing(hotel, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+    const price = stayPricing ? Math.round(stayPricing.avg) : getHotelRoomPrice(hotel, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+    const totalPrice = stayPricing ? Math.round(stayPricing.total) : null;
     const isComparing = compareIds.includes(hotel.id);
     const isSaved = savedHotelIds.includes(hotel.id);
-    const standardRooms = (hotel.hotel_rooms || []).filter(r => r.is_active && STANDARD_ROOM_TYPES.includes(r.room_type?.toLowerCase() || ""));
-    const hasMultipleRoomTypes = standardRooms.length >= 2;
-    const isRoomExpanded = expandedRoomTypes.has(hotel.id);
+
 
     return (
       <div
@@ -1073,13 +1109,11 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
           {/* Heart / Save button */}
           <button
-            className={`absolute z-20 h-8 w-8 rounded-full flex items-center justify-center transition-all duration-300 backdrop-blur-md ring-1 ${
-              (isBestPrice || isBestValue) ? "top-10 left-2" : "top-2 left-2"
-            } ${
-              isSaved
+            className={`absolute z-20 h-8 w-8 rounded-full flex items-center justify-center transition-all duration-300 backdrop-blur-md ring-1 ${(isBestPrice || isBestValue) ? "top-10 left-2" : "top-2 left-2"
+              } ${isSaved
                 ? "bg-red-500/95 text-white ring-red-300/50 shadow-lg"
                 : "bg-black/40 text-white ring-white/20 opacity-0 group-hover:opacity-100 hover:bg-red-500/95 hover:ring-red-300/50"
-            }`}
+              }`}
             onClick={(e) => handleToggleSaved(e, hotel.id)}
             title={isSaved ? "Remove from favorites" : "Save to favorites"}
           >
@@ -1088,11 +1122,10 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
           {/* Compare checkbox */}
           <button
-            className={`absolute top-2 right-2 z-20 h-7 w-7 rounded-lg flex items-center justify-center transition-all duration-300 backdrop-blur-md ring-1 ${
-              isComparing
+            className={`absolute top-2 right-2 z-20 h-7 w-7 rounded-lg flex items-center justify-center transition-all duration-300 backdrop-blur-md ring-1 ${isComparing
                 ? "bg-primary text-primary-foreground ring-primary/40 shadow-md"
                 : "bg-background/70 ring-border/40 opacity-0 group-hover:opacity-100 hover:ring-primary/60"
-            }`}
+              }`}
             onClick={(e) => { e.stopPropagation(); toggleCompare(hotel.id); }}
             title="Compare"
           >
@@ -1186,7 +1219,26 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
                 </div>
               )}
 
-              {/* Availability indicator removed per request */}
+              {/* Availability indicator */}
+              {allFieldsReady && (
+                <div className="flex items-center gap-2 mt-1">
+                  {(() => {
+                    const avail = getTotalAvailableRooms(hotel);
+                    if (avail === null) return null;
+                    const isLow = avail > 0 && avail < 5;
+                    return (
+                      <Badge variant="outline" className={cn(
+                        "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border",
+                        avail === 0 ? "bg-rose-50 text-rose-600 border-rose-200" :
+                          isLow ? "bg-amber-50 text-amber-600 border-amber-200" :
+                            "bg-emerald-50 text-emerald-600 border-emerald-200"
+                      )}>
+                        {avail === 0 ? "Sold Out" : `${avail} Rooms Available`}
+                      </Badge>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* CTA + Price */}
@@ -1246,51 +1298,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
           </div>
         </div>
 
-        {/* Room Type Preview - Collapsible */}
-        {hasMultipleRoomTypes && (
-          <Collapsible open={isRoomExpanded} onOpenChange={() => toggleRoomExpand(hotel.id)}>
-            <CollapsibleTrigger asChild>
-              <button
-                className="w-full flex items-center justify-center gap-1.5 py-2 px-4 border-t border-border/30 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <BedDouble className="h-3 w-3" />
-                <span>{standardRooms.length} room types</span>
-                <ChevronDown className={`h-3 w-3 transition-transform ${isRoomExpanded ? "rotate-180" : ""}`} />
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="border-t border-border/30 bg-muted/10 px-4 py-2 space-y-1.5">
-                {standardRooms.map(room => {
-                  const roomPrice = room.price_adult ?? room.price_per_night ?? 0;
-                  const roomTotal = nightCount && roomPrice ? nightCount * roomPrice : null;
-                  return (
-                    <div key={room.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded-md hover:bg-muted/30 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium text-foreground">{room.room_type}</span>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <UserRound className="h-3 w-3" />
-                          {room.capacity}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        {roomTotal ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground">${roomPrice}/night</span>
-                            <span className="font-bold text-primary">${roomTotal.toLocaleString()}</span>
-                            <span className="text-muted-foreground">({nightCount}n)</span>
-                          </div>
-                        ) : roomPrice > 0 ? (
-                          <span className="font-semibold text-primary">${roomPrice}/night</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        )}
+
       </div>
     );
   };
@@ -1300,9 +1308,9 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
   return (
     <div className="space-y-4">
       {/* Hero Banner + Search Panel */}
-      <div className="relative rounded-2xl overflow-hidden shadow-2xl">
+      <div className="relative rounded-2xl shadow-2xl">
         {/* Hero Background Image with KenBurns */}
-        <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden rounded-2xl">
           <img
             src={hotelHeroImg}
             alt=""
@@ -1351,149 +1359,119 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
             </span>
           </h1>
 
-      {/* Search Card */}
-      <Card className="backdrop-blur-xl bg-card/95 ring-1 ring-white/10 border-border/30 shadow-[0_30px_80px_-30px_hsl(var(--primary)/0.45),inset_0_1px_0_0_hsl(0_0%_100%/0.08)] mx-4 sm:mx-8 mb-6 rounded-2xl animate-fade-in" style={{ animationDelay: "380ms", animationFillMode: "both" }}>
-        {/* Header with gradient strip */}
-        <div className="relative px-4 py-3 border-b border-border/30 bg-gradient-to-r from-primary/[0.08] via-blue-500/[0.05] to-transparent">
-          <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center ring-1 ring-primary/30 shadow-[0_6px_20px_-6px_hsl(var(--primary)/0.6)] animate-scale-in shrink-0">
-              <BedDouble className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <h2 className="text-sm font-bold text-foreground tracking-tight leading-none">Search Hotels</h2>
-            <span className="text-[11px] text-muted-foreground hidden sm:inline">— Find the perfect accommodation for your clients</span>
-          </div>
-        </div>
-
-        <CardContent className="p-4 md:p-5">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-            {/* Destination — Enhanced Suggestions */}
-            <div className="md:col-span-3 space-y-1.5 group relative" ref={destinationRef}>
-              <div
-                className={`relative w-full h-14 rounded-xl bg-card/70 backdrop-blur border transition-colors duration-200 px-2.5 flex items-center gap-2.5 ${destinationOpen ? "border-primary/50 ring-2 ring-primary/40 shadow-[0_0_0_4px_hsl(var(--primary)/0.12)]" : "border-border/40 hover:border-primary/40 hover:shadow-md"}`}
-                onClick={() => setDestinationOpen(true)}
-              >
-                <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 ring-1 ring-primary/30 shadow-[0_4px_12px_-4px_hsl(var(--primary)/0.6)]">
-                  <MapPin className="h-4 w-4 text-primary-foreground" />
-                </span>
-                <div className="flex flex-col leading-tight min-w-0 flex-1">
-                  <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em] cursor-text">Where to</label>
-                  <input
-                    type="text"
-                    value={destination}
-                    onChange={(e) => { setDestination(e.target.value); if (!destinationOpen) setDestinationOpen(true); }}
-                    onFocus={() => setDestinationOpen(true)}
-                    placeholder="City or hotel name"
-                    className="bg-transparent border-0 outline-none p-0 text-sm text-foreground font-semibold placeholder:text-muted-foreground placeholder:font-normal w-full"
-                  />
+          {/* Search Card */}
+          <Card className="backdrop-blur-xl bg-card/95 ring-1 ring-white/10 border-border/30 shadow-[0_30px_80px_-30px_hsl(var(--primary)/0.45),inset_0_1px_0_0_hsl(0_0%_100%/0.08)] mx-4 sm:mx-8 mb-6 rounded-2xl animate-fade-in" style={{ animationDelay: "380ms", animationFillMode: "both" }}>
+            {/* Header with gradient strip */}
+            <div className="relative px-4 py-3 border-b border-border/30 bg-gradient-to-r from-primary/[0.08] via-blue-500/[0.05] to-transparent">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center ring-1 ring-primary/30 shadow-[0_6px_20px_-6px_hsl(var(--primary)/0.6)] animate-scale-in shrink-0">
+                  <BedDouble className="h-4 w-4 text-primary-foreground" />
                 </div>
+                <h2 className="text-sm font-bold text-foreground tracking-tight leading-none">Search Hotels</h2>
+                <span className="text-[11px] text-muted-foreground hidden sm:inline">— Find the perfect accommodation for your clients</span>
               </div>
+            </div>
 
-              {destinationOpen && (
-                <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-xl border border-border/60 bg-popover text-popover-foreground shadow-xl overflow-hidden animate-fade-in">
-                    <Command
-                      className="bg-transparent"
-                      shouldFilter={true}
-                      filter={(value, search) => {
-                        if (!search) return 1;
-                        const v = value.toLowerCase();
-                        const s = search.toLowerCase().trim();
-                        if (!s) return 1;
-                        if (v === s) return 1;
-                        if (v.startsWith(s)) return 0.9;
-                        const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                        const wordBoundary = new RegExp(`\\b${escaped}`);
-                        if (wordBoundary.test(v)) return 0.7;
-                        if (v.includes(s)) return 0.5;
-                        return 0;
-                      }}
-                    >
-                      {/* Hidden cmdk input — drives filtering from the outer text field */}
-                      <div className="sr-only">
-                        <CommandInput
-                          value={destination}
-                          onValueChange={setDestination}
-                          aria-hidden
-                        />
-                      </div>
-                      <CommandList className="max-h-[260px] py-1">
-                        {isLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                            <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
-                          </div>
-                        ) : hotelCities.length === 0 && (!hotels || hotels.length === 0) ? (
-                          <div className="py-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
-                            <MapPin className="h-5 w-5 opacity-50" />
-                            No destinations available yet.
-                          </div>
-                        ) : (
-                          <>
-                            <CommandEmpty>
-                              <div className="flex flex-col items-center justify-center gap-2 py-7 px-4 text-center">
-                                <div className="h-10 w-10 rounded-full bg-muted/60 flex items-center justify-center">
-                                  <Search className="h-4 w-4 text-muted-foreground" />
+            <CardContent className="p-4 md:p-5">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                {/* Destination — Enhanced Suggestions */}
+                <div className="md:col-span-3 space-y-1.5 group relative" ref={destinationRef}>
+                  <div
+                    className={`relative w-full h-14 rounded-xl bg-card/70 backdrop-blur border transition-colors duration-200 px-2.5 flex items-center gap-2.5 ${destinationOpen ? "border-primary/50 ring-2 ring-primary/40 shadow-[0_0_0_4px_hsl(var(--primary)/0.12)]" : "border-border/40 hover:border-primary/40 hover:shadow-md"}`}
+                    onClick={() => setDestinationOpen(true)}
+                  >
+                    <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 ring-1 ring-primary/30 shadow-[0_4px_12px_-4px_hsl(var(--primary)/0.6)]">
+                      <MapPin className="h-4 w-4 text-primary-foreground" />
+                    </span>
+                    <div className="flex flex-col leading-tight min-w-0 flex-1">
+                      <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em] cursor-text">Where to</label>
+                      <input
+                        type="text"
+                        value={destination}
+                        onChange={(e) => { setDestination(e.target.value); if (!destinationOpen) setDestinationOpen(true); }}
+                        onFocus={() => setDestinationOpen(true)}
+                        placeholder="City or hotel name"
+                        className="bg-transparent border-0 outline-none p-0 text-sm text-foreground font-semibold placeholder:text-muted-foreground placeholder:font-normal w-full"
+                      />
+                    </div>
+                  </div>
+
+                  {destinationOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-xl border border-border/60 bg-popover text-popover-foreground shadow-xl overflow-hidden animate-fade-in">
+                      <Command
+                        className="bg-transparent"
+                        shouldFilter={true}
+                        filter={(value, search) => {
+                          if (!search) return 1;
+                          const v = value.toLowerCase();
+                          const s = search.toLowerCase().trim();
+                          if (!s) return 1;
+                          if (v === s) return 1;
+                          if (v.startsWith(s)) return 0.9;
+                          const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                          const wordBoundary = new RegExp(`\\b${escaped}`);
+                          if (wordBoundary.test(v)) return 0.7;
+                          if (v.includes(s)) return 0.5;
+                          return 0;
+                        }}
+                      >
+                        {/* Hidden cmdk input — drives filtering from the outer text field */}
+                        <div className="sr-only">
+                          <CommandInput
+                            value={destination}
+                            onValueChange={setDestination}
+                            aria-hidden
+                          />
+                        </div>
+                        <CommandList className="max-h-[260px] py-1">
+                          {isLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
+                            </div>
+                          ) : hotelCities.length === 0 && (!hotels || hotels.length === 0) ? (
+                            <div className="py-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+                              <MapPin className="h-5 w-5 opacity-50" />
+                              No destinations available yet.
+                            </div>
+                          ) : (
+                            <>
+                              <CommandEmpty>
+                                <div className="flex flex-col items-center justify-center gap-2 py-7 px-4 text-center">
+                                  <div className="h-10 w-10 rounded-full bg-muted/60 flex items-center justify-center">
+                                    <Search className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <p className="text-sm font-semibold text-foreground">No matches found</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {destination ? <>We couldn't find any city or hotel for <span className="font-medium text-foreground">"{destination}"</span>.</> : "Try a different search."}
+                                    </p>
+                                  </div>
+                                  {destination && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setDestination("")}
+                                      className="mt-1 inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted/60 transition-colors"
+                                    >
+                                      Clear search
+                                    </button>
+                                  )}
                                 </div>
-                                <div className="space-y-0.5">
-                                  <p className="text-sm font-semibold text-foreground">No matches found</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {destination ? <>We couldn't find any city or hotel for <span className="font-medium text-foreground">"{destination}"</span>.</> : "Try a different search."}
-                                  </p>
-                                </div>
-                                {destination && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setDestination("")}
-                                    className="mt-1 inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted/60 transition-colors"
-                                  >
-                                    Clear search
-                                  </button>
-                                )}
-                              </div>
-                            </CommandEmpty>
+                              </CommandEmpty>
 
-                            {trendingCities.length > 0 && (
-                              <CommandGroup
-                                heading={
-                                  <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                    <Flame className="h-3 w-3 text-amber-500" />
-                                    Trending
-                                  </span>
-                                }
-                                className="px-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:pb-1"
-                              >
-                                {trendingCities.map((city) => (
-                                  <CommandItem
-                                    key={`trending-${city.name}`}
-                                    value={`${city.name} ${city.country || ""}`}
-                                    onSelect={() => { setDestination(city.name); setDestinationOpen(false); }}
-                                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:!bg-muted/60 data-[selected=true]:!bg-muted/70 data-[selected=true]:!text-foreground cursor-pointer"
-                                  >
-                                    {city.country && getCountryFlagUrl(city.country) ? (
-                                      <img src={getCountryFlagUrl(city.country)!} alt="" className="h-4 w-6 object-cover rounded-sm shrink-0" />
-                                    ) : (
-                                      <div className="h-6 w-6 rounded-sm overflow-hidden shrink-0 bg-muted flex items-center justify-center">
-                                        <MapPin className="h-3 w-3 text-muted-foreground" />
-                                      </div>
-                                    )}
-                                    <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{city.name}</span>
-                                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-semibold tabular-nums">
-                                      {city.count}
-                                    </span>
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            )}
-
-                            {hotelCities.length > 0 && (
-                              <>
-                                <div className="mx-2 my-0.5 h-px bg-border/50" />
+                              {trendingCities.length > 0 && (
                                 <CommandGroup
-                                  heading={<span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Cities</span>}
+                                  heading={
+                                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                      <Flame className="h-3 w-3 text-amber-500" />
+                                      Trending
+                                    </span>
+                                  }
                                   className="px-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:pb-1"
                                 >
-                                  {hotelCities.map((city) => (
+                                  {trendingCities.map((city) => (
                                     <CommandItem
-                                      key={city.name}
+                                      key={`trending-${city.name}`}
                                       value={`${city.name} ${city.country || ""}`}
                                       onSelect={() => { setDestination(city.name); setDestinationOpen(false); }}
                                       className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:!bg-muted/60 data-[selected=true]:!bg-muted/70 data-[selected=true]:!text-foreground cursor-pointer"
@@ -1505,192 +1483,222 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
                                           <MapPin className="h-3 w-3 text-muted-foreground" />
                                         </div>
                                       )}
-                                      <span className="flex-1 min-w-0 text-sm text-foreground truncate">{city.name}</span>
-                                      <span className="shrink-0 text-[10px] font-medium text-muted-foreground tabular-nums">{city.count}</span>
+                                      <span className="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{city.name}</span>
+                                      <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-semibold tabular-nums">
+                                        {city.count}
+                                      </span>
                                     </CommandItem>
                                   ))}
                                 </CommandGroup>
-                              </>
-                            )}
+                              )}
 
-                            {hotels && hotels.length > 0 && (
-                              <>
-                                <div className="mx-2 my-0.5 h-px bg-border/50" />
-                                <CommandGroup
-                                  heading={<span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Hotels</span>}
-                                  className="px-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:pb-1"
-                                >
-                                  {hotels.map((hotel) => (
-                                    <CommandItem
-                                      key={hotel.id}
-                                      value={`${hotel.name} ${hotel.cities?.name || ""} ${hotel.cities?.country || ""}`}
-                                      onSelect={() => { setDestination(hotel.name); setDestinationOpen(false); }}
-                                      className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:!bg-muted/60 data-[selected=true]:!bg-muted/70 data-[selected=true]:!text-foreground cursor-pointer"
-                                    >
-                                      <div className="relative h-6 w-6 rounded-sm overflow-hidden shrink-0 bg-muted">
-                                        {hotel.images?.[0] ? (
-                                          <img src={hotel.images[0]} alt={hotel.name} className="h-full w-full object-cover" />
+                              {hotelCities.length > 0 && (
+                                <>
+                                  <div className="mx-2 my-0.5 h-px bg-border/50" />
+                                  <CommandGroup
+                                    heading={<span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Cities</span>}
+                                    className="px-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:pb-1"
+                                  >
+                                    {hotelCities.map((city) => (
+                                      <CommandItem
+                                        key={city.name}
+                                        value={`${city.name} ${city.country || ""}`}
+                                        onSelect={() => { setDestination(city.name); setDestinationOpen(false); }}
+                                        className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:!bg-muted/60 data-[selected=true]:!bg-muted/70 data-[selected=true]:!text-foreground cursor-pointer"
+                                      >
+                                        {city.country && getCountryFlagUrl(city.country) ? (
+                                          <img src={getCountryFlagUrl(city.country)!} alt="" className="h-4 w-6 object-cover rounded-sm shrink-0" />
                                         ) : (
-                                          <Building className="h-3 w-3 text-muted-foreground m-auto" />
+                                          <div className="h-6 w-6 rounded-sm overflow-hidden shrink-0 bg-muted flex items-center justify-center">
+                                            <MapPin className="h-3 w-3 text-muted-foreground" />
+                                          </div>
                                         )}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <span className="text-sm text-foreground block truncate">{hotel.name}</span>
-                                        <span className="text-[10px] text-muted-foreground block truncate">{hotel.cities?.name || ""}</span>
-                                      </div>
-                                      <div className="flex items-center gap-0.5 shrink-0">
-                                        {Array.from({ length: hotel.star_rating || 0 }).map((_, i) => (
-                                          <Star key={i} className="h-2.5 w-2.5 fill-gold text-gold" />
-                                        ))}
-                                      </div>
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              </>
-                            )}
-                          </>
+                                        <span className="flex-1 min-w-0 text-sm text-foreground truncate">{city.name}</span>
+                                        <span className="shrink-0 text-[10px] font-medium text-muted-foreground tabular-nums">{city.count}</span>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </>
+                              )}
+
+                              {hotels && hotels.length > 0 && (
+                                <>
+                                  <div className="mx-2 my-0.5 h-px bg-border/50" />
+                                  <CommandGroup
+                                    heading={<span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Hotels</span>}
+                                    className="px-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:pb-1"
+                                  >
+                                    {hotels.map((hotel) => (
+                                      <CommandItem
+                                        key={hotel.id}
+                                        value={`${hotel.name} ${hotel.cities?.name || ""} ${hotel.cities?.country || ""}`}
+                                        onSelect={() => { setDestination(hotel.name); setDestinationOpen(false); }}
+                                        className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:!bg-muted/60 data-[selected=true]:!bg-muted/70 data-[selected=true]:!text-foreground cursor-pointer"
+                                      >
+                                        <div className="relative h-6 w-6 rounded-sm overflow-hidden shrink-0 bg-muted">
+                                          {hotel.images?.[0] ? (
+                                            <img src={hotel.images[0]} alt={hotel.name} className="h-full w-full object-cover" />
+                                          ) : (
+                                            <Building className="h-3 w-3 text-muted-foreground m-auto" />
+                                          )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <span className="text-sm text-foreground block truncate">{hotel.name}</span>
+                                          <span className="text-[10px] text-muted-foreground block truncate">{hotel.cities?.name || ""}</span>
+                                        </div>
+                                        <div className="flex items-center gap-0.5 shrink-0">
+                                          {Array.from({ length: hotel.star_rating || 0 }).map((_, i) => (
+                                            <Star key={i} className="h-2.5 w-2.5 fill-gold text-gold" />
+                                          ))}
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </>
+                              )}
+                            </>
+                          )}
+                        </CommandList>
+                      </Command>
+                    </div>
+                  )}
+                </div>
+
+                {/* Check In */}
+                <div className="md:col-span-2 space-y-1.5">
+
+                  <Popover open={checkInOpen} onOpenChange={setCheckInOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full h-14 justify-start text-left font-normal bg-card/70 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card data-[state=open]:ring-2 data-[state=open]:ring-primary/50 data-[state=open]:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] transition-all duration-200 px-2.5 gap-2.5">
+                        <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 ring-1 ring-primary/30 shadow-[0_4px_12px_-4px_hsl(var(--primary)/0.6)]">
+                          <Calendar className="h-4 w-4 text-primary-foreground" />
+                        </span>
+                        {checkIn ? (
+                          <span className="flex flex-col leading-tight min-w-0">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Check-in</span>
+                            <span className="font-bold text-foreground text-sm truncate">{format(checkIn, "dd MMM yyyy")}</span>
+                          </span>
+                        ) : (
+                          <span className="flex flex-col leading-tight min-w-0">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Check-in</span>
+                            <span className="text-muted-foreground text-sm">Select date</span>
+                          </span>
                         )}
-                      </CommandList>
-                    </Command>
-                  </div>
-              )}
-            </div>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <AvailabilityCalendar mode="single" selected={checkIn} onSelect={(d) => { setCheckIn(d); setCheckInOpen(false); if (d) { if (checkOut && checkOut <= d) setCheckOut(undefined); setTimeout(() => setCheckOutOpen(true), 150); } }} disabled={(date) => startOfDay(date) < startOfDay(new Date())} availableDates={hotelAvailability.available} limitedDates={hotelAvailability.limited} soldOutDates={hotelAvailability.soldOut} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </div>
 
-            {/* Check In */}
-            <div className="md:col-span-2 space-y-1.5">
-              
-              <Popover open={checkInOpen} onOpenChange={setCheckInOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full h-14 justify-start text-left font-normal bg-card/70 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card data-[state=open]:ring-2 data-[state=open]:ring-primary/50 data-[state=open]:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] transition-all duration-200 px-2.5 gap-2.5">
-                    <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 ring-1 ring-primary/30 shadow-[0_4px_12px_-4px_hsl(var(--primary)/0.6)]">
-                      <Calendar className="h-4 w-4 text-primary-foreground" />
-                    </span>
-                    {checkIn ? (
-                      <span className="flex flex-col leading-tight min-w-0">
-                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Check-in</span>
-                        <span className="font-bold text-foreground text-sm truncate">{format(checkIn, "dd MMM yyyy")}</span>
-                      </span>
-                    ) : (
-                      <span className="flex flex-col leading-tight min-w-0">
-                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Check-in</span>
-                        <span className="text-muted-foreground text-sm">Select date</span>
-                      </span>
-                    )}
+                {/* Check Out */}
+                <div className="md:col-span-2 space-y-1.5 relative">
+                  {nightCount && nightCount > 0 && (
+                    <div className="hidden md:flex absolute -left-1.5 top-9 z-10 -translate-x-1/2 items-center justify-center px-2 py-0.5 rounded-full bg-gradient-to-r from-primary to-blue-500 text-primary-foreground text-[10px] font-bold shadow-lg ring-2 ring-background">
+                      {nightCount}n
+                    </div>
+                  )}
+
+                  <Popover open={checkOutOpen} onOpenChange={setCheckOutOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full h-14 justify-start text-left font-normal bg-card/70 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card data-[state=open]:ring-2 data-[state=open]:ring-primary/50 data-[state=open]:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] transition-all duration-200 px-2.5 gap-2.5">
+                        <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 ring-1 ring-primary/30 shadow-[0_4px_12px_-4px_hsl(var(--primary)/0.6)]">
+                          <Calendar className="h-4 w-4 text-primary-foreground" />
+                        </span>
+                        {checkOut ? (
+                          <span className="flex flex-col leading-tight min-w-0">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Check-out</span>
+                            <span className="font-bold text-foreground text-sm truncate">{format(checkOut, "dd MMM yyyy")}</span>
+                          </span>
+                        ) : (
+                          <span className="flex flex-col leading-tight min-w-0">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Check-out</span>
+                            <span className="text-muted-foreground text-sm">Select date</span>
+                          </span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <AvailabilityCalendar mode="single" selected={checkOut} onSelect={(d) => { setCheckOut(d); setCheckOutOpen(false); }} disabled={(date) => checkIn ? startOfDay(date) <= startOfDay(checkIn) : startOfDay(date) < startOfDay(new Date())} availableDates={checkOutAvailability.available} limitedDates={checkOutAvailability.limited} soldOutDates={checkOutAvailability.soldOut} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Guests & Rooms */}
+                <div className="md:col-span-3 space-y-1.5">
+
+                  <Popover open={guestsOpen} onOpenChange={setGuestsOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full h-14 justify-start text-left font-normal bg-card/70 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card data-[state=open]:ring-2 data-[state=open]:ring-primary/50 data-[state=open]:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] transition-all duration-200 gap-2.5 px-2.5">
+                        <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 ring-1 ring-primary/30 shadow-[0_4px_12px_-4px_hsl(var(--primary)/0.6)]">
+                          <Home className="h-4 w-4 text-primary-foreground" />
+                        </span>
+                        <span className="flex flex-col leading-tight min-w-0 flex-1">
+                          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Rooms & Guests</span>
+                          <span className="font-bold text-foreground text-sm truncate">
+                            {roomCount} {roomCount === 1 ? "room" : "rooms"} · {totalGuests} {totalGuests === 1 ? "guest" : "guests"}
+                          </span>
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[420px] p-0 bg-card border border-border shadow-lg z-50" align="start">
+                      <HotelRoomConfigurator rooms={roomConfigs} onRoomsChange={setRoomConfigs} onApply={() => setGuestsOpen(false)} />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Search Button */}
+                <div className="md:col-span-2 flex items-end">
+                  <Button
+                    onClick={handleHotelSearch}
+                    disabled={isLoading || isSearching}
+                    className={`relative overflow-hidden group w-full h-14 rounded-xl bg-gradient-to-r from-primary to-blue-500 text-primary-foreground hover:opacity-95 hover:scale-[1.02] active:scale-[0.99] shadow-[0_10px_28px_-10px_hsl(var(--primary)/0.65)] hover:shadow-[0_14px_36px_-10px_hsl(var(--primary)/0.85)] transition-all gap-2 text-sm font-bold tracking-wide`}
+                  >
+                    <span aria-hidden className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+                    {isLoading || isSearching ? <Loader2 className="h-5 w-5 animate-spin relative z-10" /> : <><Search className="h-4 w-4 relative z-10" /><span className="relative z-10">Search Hotels</span></>}
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <AvailabilityCalendar mode="single" selected={checkIn} onSelect={(d) => { setCheckIn(d); setCheckInOpen(false); if (d) { if (checkOut && checkOut <= d) setCheckOut(undefined); setTimeout(() => setCheckOutOpen(true), 150); } }} disabled={(date) => date < new Date()} availableDates={hotelAvailability.available} limitedDates={hotelAvailability.limited} soldOutDates={hotelAvailability.soldOut} initialFocus />
-                </PopoverContent>
-              </Popover>
-            </div>
+                </div>
+              </div>
 
-            {/* Check Out */}
-            <div className="md:col-span-2 space-y-1.5 relative">
-              {nightCount && nightCount > 0 && (
-                <div className="hidden md:flex absolute -left-1.5 top-9 z-10 -translate-x-1/2 items-center justify-center px-2 py-0.5 rounded-full bg-gradient-to-r from-primary to-blue-500 text-primary-foreground text-[10px] font-bold shadow-lg ring-2 ring-background">
-                  {nightCount}n
+              {/* Recent Searches - inside card */}
+              {recentSearches.length > 0 && !showResults && !isSearching && (
+                <div
+                  className="border-t border-border/20 px-4 md:px-5 py-2.5 flex items-center gap-2 overflow-x-auto scrollbar-none"
+                  style={{
+                    maskImage: "linear-gradient(to right, black calc(100% - 48px), transparent 100%)",
+                    WebkitMaskImage: "linear-gradient(to right, black calc(100% - 48px), transparent 100%)",
+                  }}
+                >
+                  <span className="text-xs text-muted-foreground font-medium shrink-0 flex items-center gap-1 uppercase tracking-wider">
+                    <Clock className="h-3.5 w-3.5" /> Recent:
+                  </span>
+                  {recentSearches.map((rs, i) => (
+                    <button
+                      key={i}
+                      onClick={() => applyRecentSearch(rs)}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/60 hover:bg-muted border border-border/40 text-xs text-foreground transition-colors"
+                    >
+                      <MapPin className="h-3 w-3 text-primary/60" />
+                      <span className="font-medium">{rs.destination}</span>
+                      {rs.checkIn && (
+                        <span className="text-muted-foreground">
+                          {format(new Date(rs.checkIn), "dd/MM")}
+                          {rs.checkOut && ` - ${format(new Date(rs.checkOut), "dd/MM")}`}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => { clearRecentSearches(); setRecentSearches([]); }}
+                    className="shrink-0 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    Clear All
+                  </button>
                 </div>
               )}
-              
-              <Popover open={checkOutOpen} onOpenChange={setCheckOutOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full h-14 justify-start text-left font-normal bg-card/70 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card data-[state=open]:ring-2 data-[state=open]:ring-primary/50 data-[state=open]:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] transition-all duration-200 px-2.5 gap-2.5">
-                    <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 ring-1 ring-primary/30 shadow-[0_4px_12px_-4px_hsl(var(--primary)/0.6)]">
-                      <Calendar className="h-4 w-4 text-primary-foreground" />
-                    </span>
-                    {checkOut ? (
-                      <span className="flex flex-col leading-tight min-w-0">
-                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Check-out</span>
-                        <span className="font-bold text-foreground text-sm truncate">{format(checkOut, "dd MMM yyyy")}</span>
-                      </span>
-                    ) : (
-                      <span className="flex flex-col leading-tight min-w-0">
-                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Check-out</span>
-                        <span className="text-muted-foreground text-sm">Select date</span>
-                      </span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <AvailabilityCalendar mode="single" selected={checkOut} onSelect={(d) => { setCheckOut(d); setCheckOutOpen(false); }} disabled={(date) => checkIn ? date <= checkIn : date < new Date()} availableDates={checkOutAvailability.available} limitedDates={checkOutAvailability.limited} soldOutDates={checkOutAvailability.soldOut} initialFocus />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Guests & Rooms */}
-            <div className="md:col-span-3 space-y-1.5">
-              
-              <Popover open={guestsOpen} onOpenChange={setGuestsOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full h-14 justify-start text-left font-normal bg-card/70 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card data-[state=open]:ring-2 data-[state=open]:ring-primary/50 data-[state=open]:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] transition-all duration-200 gap-2.5 px-2.5">
-                    <span className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 ring-1 ring-primary/30 shadow-[0_4px_12px_-4px_hsl(var(--primary)/0.6)]">
-                      <Home className="h-4 w-4 text-primary-foreground" />
-                    </span>
-                    <span className="flex flex-col leading-tight min-w-0 flex-1">
-                      <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.14em]">Rooms & Guests</span>
-                      <span className="font-bold text-foreground text-sm truncate">
-                        {roomCount} {roomCount === 1 ? "room" : "rooms"} · {totalGuests} {totalGuests === 1 ? "guest" : "guests"}
-                      </span>
-                    </span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[420px] p-0 bg-card border border-border shadow-lg z-50" align="start">
-                  <HotelRoomConfigurator rooms={roomConfigs} onRoomsChange={setRoomConfigs} onApply={() => setGuestsOpen(false)} />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Search Button */}
-            <div className="md:col-span-2 flex items-end">
-              <Button
-                onClick={handleHotelSearch}
-                disabled={isLoading || isSearching}
-                className={`relative overflow-hidden group w-full h-14 rounded-xl bg-gradient-to-r from-primary to-blue-500 text-primary-foreground hover:opacity-95 hover:scale-[1.02] active:scale-[0.99] shadow-[0_10px_28px_-10px_hsl(var(--primary)/0.65)] hover:shadow-[0_14px_36px_-10px_hsl(var(--primary)/0.85)] transition-all gap-2 text-sm font-bold tracking-wide`}
-              >
-                <span aria-hidden className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
-                {isLoading || isSearching ? <Loader2 className="h-5 w-5 animate-spin relative z-10" /> : <><Search className="h-4 w-4 relative z-10" /><span className="relative z-10">Search Hotels</span></>}
-              </Button>
-            </div>
-          </div>
-
-          {/* Recent Searches - inside card */}
-          {recentSearches.length > 0 && !showResults && !isSearching && (
-            <div
-              className="border-t border-border/20 px-4 md:px-5 py-2.5 flex items-center gap-2 overflow-x-auto scrollbar-none"
-              style={{
-                maskImage: "linear-gradient(to right, black calc(100% - 48px), transparent 100%)",
-                WebkitMaskImage: "linear-gradient(to right, black calc(100% - 48px), transparent 100%)",
-              }}
-            >
-              <span className="text-xs text-muted-foreground font-medium shrink-0 flex items-center gap-1 uppercase tracking-wider">
-                <Clock className="h-3.5 w-3.5" /> Recent:
-              </span>
-              {recentSearches.map((rs, i) => (
-                <button
-                  key={i}
-                  onClick={() => applyRecentSearch(rs)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/60 hover:bg-muted border border-border/40 text-xs text-foreground transition-colors"
-                >
-                  <MapPin className="h-3 w-3 text-primary/60" />
-                  <span className="font-medium">{rs.destination}</span>
-                  {rs.checkIn && (
-                    <span className="text-muted-foreground">
-                      {format(new Date(rs.checkIn), "dd/MM")}
-                      {rs.checkOut && ` - ${format(new Date(rs.checkOut), "dd/MM")}`}
-                    </span>
-                  )}
-                </button>
-              ))}
-              <button
-                onClick={() => { clearRecentSearches(); setRecentSearches([]); }}
-                className="shrink-0 text-xs text-muted-foreground hover:text-destructive transition-colors"
-              >
-                Clear All
-              </button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -1838,7 +1846,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
                       hotels={filteredHotels}
                       nightCount={nightCount}
                       roomType={searchedRoomType}
-                      roomCount={roomCount}
+                      roomConfigs={roomConfigs}
                       onHotelSelect={(hotel) => onHotelSelect?.(hotel, { checkIn, checkOut, guests: totalGuests, rooms: roomCount, adults: totalAdults, children: totalChildren, infants: 0, roomConfigs })}
                       onQuickView={(hotel) => { setQuickViewHotel(hotel); setQuickViewImageIndex(0); }}
                     />
@@ -1883,7 +1891,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
           <div className="flex gap-1.5">
             {compareHotels.map(h => (
               <Badge key={h.id} variant="secondary" className="text-xs gap-1 pr-1">
-                {h.name.slice(0, 12)}{h.name.length > 12 && "…"}
+                {(h.name || "Hotel").slice(0, 12)}{(h.name || "").length > 12 && "…"}
                 <button onClick={() => toggleCompare(h.id)} className="hover:text-destructive transition-colors">
                   <X className="h-3 w-3" />
                 </button>
@@ -2003,8 +2011,8 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
             const hotel = quickViewHotel;
             const images = hotel.images || [];
             const currentImage = images[quickViewImageIndex] || "/placeholder.svg";
-            const stayPricing = getHotelStayPricing(hotel, searchedRoomType, roomCount, computePeriodAvail(hotel), checkIn, checkOut);
-            const price = stayPricing ? Math.round(stayPricing.avg) : getHotelRoomPrice(hotel, searchedRoomType, roomCount, computePeriodAvail(hotel));
+            const stayPricing = getHotelStayPricing(hotel, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+            const price = stayPricing ? Math.round(stayPricing.avg) : getHotelRoomPrice(hotel, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
             const totalPrice = stayPricing ? Math.round(stayPricing.total) : null;
             const totalRooms = getTotalAvailableRooms(hotel);
 
@@ -2114,9 +2122,8 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
                         <button
                           key={i}
                           onClick={() => setQuickViewImageIndex(i)}
-                          className={`w-14 h-10 rounded-lg overflow-hidden flex-shrink-0 border-2 transition-all ${
-                            i === quickViewImageIndex ? "border-primary ring-1 ring-primary/30" : "border-transparent opacity-60 hover:opacity-100"
-                          }`}
+                          className={`w-14 h-10 rounded-lg overflow-hidden flex-shrink-0 border-2 transition-all ${i === quickViewImageIndex ? "border-primary ring-1 ring-primary/30" : "border-transparent opacity-60 hover:opacity-100"
+                            }`}
                         >
                           <img src={img} alt="" className="w-full h-full object-cover" />
                         </button>
@@ -2140,7 +2147,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
                       variant="outline"
                       className="h-11 rounded-xl"
                       onClick={() => {
-                        handleToggleSaved({ stopPropagation: () => {} } as React.MouseEvent, hotel.id);
+                        handleToggleSaved({ stopPropagation: () => { } } as React.MouseEvent, hotel.id);
                       }}
                     >
                       <Heart className={`h-4 w-4 ${savedHotelIds.includes(hotel.id) ? "fill-red-500 text-red-500" : ""}`} />

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay, isWithinInterval, differenceInDays } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay, isWithinInterval, differenceInDays, startOfDay } from "date-fns";
 import { Calendar, Building, AlertCircle, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -99,7 +99,7 @@ export function HotelAvailabilityCalendar({
             const status = getAvailabilityStatus(hotelsOnDate);
             const roomCount = getTotalRooms(hotelsOnDate);
             const isToday = isSameDay(day, new Date());
-            const isPast = day < new Date();
+            const isPast = startOfDay(day) < startOfDay(new Date());
             
             return (
               <button
@@ -158,7 +158,7 @@ export function HotelValidityBadge({ validFrom, validUntil }: { validFrom?: stri
   
   const endDate = new Date(validUntil);
   const today = new Date();
-  const daysRemaining = differenceInDays(endDate, today);
+  const daysRemaining = differenceInDays(startOfDay(endDate), startOfDay(today));
   
   if (daysRemaining < 0) {
     return (

@@ -30,7 +30,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import { toast } from "sonner";
 import { useCreateBooking } from "@/hooks/useBookings";
 import { UniversalVoucher } from "./UniversalVoucher";
@@ -335,7 +335,7 @@ export function TourBookingModal({ open, onOpenChange, tour }: TourBookingModalP
                                       field.onChange(d);
                                       setDateOpen(false);
                                     }}
-                                    disabled={(date) => date < new Date()}
+                                    disabled={(date) => startOfDay(date) < startOfDay(new Date())}
                                     initialFocus
                                     className={cn("p-3 pointer-events-auto")}
                                   />

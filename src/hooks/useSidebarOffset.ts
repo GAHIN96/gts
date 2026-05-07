@@ -8,8 +8,26 @@ import { useSidebar } from "@/components/ui/sidebar";
  * - Collapsed (icon mode): 5rem (matches SIDEBAR_WIDTH_ICON)
  * - Expanded: 16rem (matches SIDEBAR_WIDTH)
  */
+import { useState, useEffect } from "react";
+
 export function useSidebarOffset(): string {
-  const { state, isMobile } = useSidebar();
-  if (isMobile) return "0px";
-  return state === "collapsed" ? "7rem" : "22rem";
+  const { isMobile } = useSidebar();
+  const [width, setWidth] = useState("96px");
+
+  useEffect(() => {
+    if (isMobile) {
+      setWidth("0px");
+      return;
+    }
+
+    const computedWidth = getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width").trim();
+    if (computedWidth) {
+      setWidth(computedWidth);
+    } else {
+      const isCompact = localStorage.getItem("sidebar.compact.v1") === "1";
+      setWidth(isCompact ? "64px" : "96px");
+    }
+  }, [isMobile]);
+
+  return isMobile ? "0px" : width;
 }

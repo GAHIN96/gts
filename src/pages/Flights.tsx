@@ -162,10 +162,10 @@ function FlightTable({ flights, onEdit, onDelete, onBlockSeats, blockedSeatsMap 
                     <p className="font-medium">{group.outbound.flight_number || group.outbound.airline}</p>
                     <div className="flex items-center gap-1 text-sm text-muted-foreground">
                       <span>{group.outbound.departure_city}</span>
-                      {group.outbound.departure_airport_code && <span className="text-[10px] font-mono font-bold">({group.outbound.departure_airport_code})</span>}
+                      {group.outbound.departure_airport_code && <span className="text-[10px] font-sans font-medium font-bold">({group.outbound.departure_airport_code})</span>}
                       <ArrowRight className="h-3 w-3" />
                       <span>{group.outbound.arrival_city}</span>
-                      {group.outbound.arrival_airport_code && <span className="text-[10px] font-mono font-bold">({group.outbound.arrival_airport_code})</span>}
+                      {group.outbound.arrival_airport_code && <span className="text-[10px] font-sans font-medium font-bold">({group.outbound.arrival_airport_code})</span>}
                     </div>
                   </div>
                 </div>
@@ -304,10 +304,10 @@ function FlightTable({ flights, onEdit, onDelete, onBlockSeats, blockedSeatsMap 
                       <p className="font-medium text-sm">{group.return.flight_number || group.return.airline}</p>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <span>{group.return.departure_city}</span>
-                        {group.return.departure_airport_code && <span className="text-[10px] font-mono font-bold">({group.return.departure_airport_code})</span>}
+                        {group.return.departure_airport_code && <span className="text-[10px] font-sans font-medium font-bold">({group.return.departure_airport_code})</span>}
                         <ArrowRight className="h-3 w-3" />
                         <span>{group.return.arrival_city}</span>
-                        {group.return.arrival_airport_code && <span className="text-[10px] font-mono font-bold">({group.return.arrival_airport_code})</span>}
+                        {group.return.arrival_airport_code && <span className="text-[10px] font-sans font-medium font-bold">({group.return.arrival_airport_code})</span>}
                       </div>
                     </div>
                   </div>
@@ -418,14 +418,14 @@ const Flights = () => {
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(new Set());
   const [columnFilterOpen, setColumnFilterOpen] = useState(false);
 
-  const { data: flights, isLoading } = useFlights();
+  const { data: flights, isLoading, error: flightsError } = useFlights();
   const { data: stats } = useFlightStats();
   const deleteFlight = useDeleteFlight();
   const { data: blockedSeatsMap = {} } = useAllFlightSeatBlocks();
 
 
   // Flight deals hooks
-  const { data: allFlightDeals, isLoading: dealsLoading } = useFlightDeals();
+  const { data: allFlightDeals, isLoading: dealsLoading, error: dealsError } = useFlightDeals();
   const { data: activeFlightDeals } = useActiveFlightDeals();
   const createDeal = useCreateFlightDeal();
   const updateDeal = useUpdateFlightDeal();
@@ -538,6 +538,23 @@ const Flights = () => {
     exportToExcel(rows, "Flights", "flights-export");
   };
 
+  if (flightsError || dealsError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+          <Lock className="h-6 w-6 text-destructive" />
+        </div>
+        <div className="text-center">
+          <h3 className="text-lg font-semibold">Connection Error</h3>
+          <p className="text-muted-foreground">We couldn't reach the server. Please check your connection or try again.</p>
+        </div>
+        <Button onClick={() => window.location.reload()} variant="outline">
+          Retry Connection
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {isManageView ? (
@@ -615,21 +632,7 @@ const Flights = () => {
         </div>
       )}
 
-      {/* Promo Slideshow - airline reklam, auto-rotating */}
-      {!isManageView && promoImages.length > 0 && (
-        <div className="relative rounded-2xl overflow-hidden h-[160px] md:h-[200px] shadow-card">
-          <ImageCarousel
-            images={promoImages}
-            autoPlay
-            interval={4000}
-            aspectRatio="hero"
-            className="h-full"
-            showDots={promoImages.length > 1}
-            showArrows={promoImages.length > 1}
-            overlay={false}
-          />
-        </div>
-      )}
+
       {!isManageView && formattedDeals.length > 0 && (
         <SpecialOffersSection 
           title="Special Flight Deals" 

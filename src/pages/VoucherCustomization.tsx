@@ -466,7 +466,7 @@ export default function VoucherCustomization() {
                         value={formData.primaryColor}
                         onChange={(e) => handleInputChange("primaryColor", e.target.value)}
                         placeholder="#1A237E"
-                        className="font-mono"
+                        className="font-sans font-medium"
                       />
                     </div>
                   </div>

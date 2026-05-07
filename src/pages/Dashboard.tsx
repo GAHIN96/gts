@@ -381,7 +381,7 @@ const AdminDashboard = () => {
                       className="border-b border-border last:border-0 cursor-pointer hover:bg-muted/40 transition-colors"
                     >
                       <td className="px-5 py-3">
-                        <div className="font-mono text-xs font-semibold text-foreground">{b.booking_number}</div>
+                        <div className="font-sans font-medium text-xs font-semibold text-foreground">{b.booking_number}</div>
                         <div className="text-xs text-muted-foreground capitalize">
                           {b.package_name || b.booking_type}
                         </div>
@@ -434,7 +434,7 @@ const AdminDashboard = () => {
                   <li key={d.name} className="space-y-1.5">
                     <div className="flex items-center justify-between text-sm">
                       <span className="flex items-center gap-2 text-foreground/90">
-                        <span className="text-[11px] font-mono text-muted-foreground w-4">{i + 1}</span>
+                        <span className="text-[11px] font-sans font-medium text-muted-foreground w-4">{i + 1}</span>
                         {d.name}
                       </span>
                       <span className="font-semibold text-foreground">{d.count}</span>

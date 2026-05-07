@@ -153,7 +153,7 @@ export function FlightScheduleCard({
                   </div>
                   <p className="text-2xl font-bold text-foreground">{outbound.departure_city}</p>
                   {(outbound as any).departure_airport_code && (
-                    <Badge variant="outline" className="mt-1 text-xs font-mono">
+                    <Badge variant="outline" className="mt-1 text-xs font-sans font-medium">
                       {(outbound as any).departure_airport_code}
                     </Badge>
                   )}
@@ -181,7 +181,7 @@ export function FlightScheduleCard({
                   </div>
                   <p className="text-2xl font-bold text-blue-600">{outbound.arrival_city}</p>
                   {(outbound as any).arrival_airport_code && (
-                    <Badge variant="outline" className="mt-1 text-xs font-mono">
+                    <Badge variant="outline" className="mt-1 text-xs font-sans font-medium">
                       {(outbound as any).arrival_airport_code}
                     </Badge>
                   )}
@@ -252,7 +252,7 @@ export function FlightScheduleCard({
                   </div>
                   <p className="text-2xl font-bold text-foreground">{inbound.departure_city}</p>
                   {(inbound as any).departure_airport_code && (
-                    <Badge variant="outline" className="mt-1 text-xs font-mono">
+                    <Badge variant="outline" className="mt-1 text-xs font-sans font-medium">
                       {(inbound as any).departure_airport_code}
                     </Badge>
                   )}
@@ -280,7 +280,7 @@ export function FlightScheduleCard({
                   </div>
                   <p className="text-2xl font-bold text-green-600">{inbound.arrival_city}</p>
                   {(inbound as any).arrival_airport_code && (
-                    <Badge variant="outline" className="mt-1 text-xs font-mono">
+                    <Badge variant="outline" className="mt-1 text-xs font-sans font-medium">
                       {(inbound as any).arrival_airport_code}
                     </Badge>
                   )}
