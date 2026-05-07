@@ -104,14 +104,7 @@ export default function Auth() {
         </h1>
         
         <div className="mt-8 animate-fade-up" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
-          <div className="inline-flex items-center gap-4 px-6 py-4 rounded-2xl bg-black/20 backdrop-blur-xl border border-white/10 text-white/90 text-lg md:text-xl font-light shadow-2xl">
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.8)]"></span>
-            </span>
-            <span className="tracking-wide">Your complete travel management platform</span>
-          </div>
-          
+
           <div className="flex items-center gap-6 mt-6 ml-2">
             {['Flights', 'Hotels', 'Group Packages'].map((item) => (
               <div key={item} className="flex items-center gap-2 text-white/70 text-sm tracking-widest uppercase font-medium">
