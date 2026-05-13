@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Hotel, MapPin, Star, CalendarIcon, Users, Bed, DollarSign, FileText } from "lucide-react";
+import { Hotel, MapPin, Star, CalendarIcon, Users, Bed, DollarSign, FileText, Coffee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -51,7 +51,8 @@ export function HotelBookingModal({
   const [checkOut, setCheckOut] = useState<Date | undefined>(initialCheckOut);
   const [rooms, setRooms] = useState<RoomConfig[]>(initialRoomConfigs && initialRoomConfigs.length > 0 ? initialRoomConfigs : [{ adults: initialGuests, children6to12: 0, children2to6: 0, infants: 0 }]);
   const [guestsApplied, setGuestsApplied] = useState(false);
-  const [step, setStep] = useState<"form" | "payment" | "voucher">("form");
+  const [step, setStep] = useState<"form" | "review" | "payment" | "voucher">("form");
+  const [pendingPassengerData, setPendingPassengerData] = useState<PassengerFormData | null>(null);
   const [showCelebration, setShowCelebration] = useState(false);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [checkOutOpen, setCheckOutOpen] = useState(false);
@@ -163,8 +164,15 @@ export function HotelBookingModal({
       dailyLogs.push(`Fallback: $${totalRoomPrice / Math.max(1, nights)}/night`);
     }
 
+    const hasBreakfast = hotel?.amenities?.some(a => 
+      a.toLowerCase().includes("breakfast") || 
+      a.toLowerCase().includes("buffet") || 
+      a.toLowerCase() === "bb"
+    );
+    const displayType = hasBreakfast ? `${type} with Breakfast` : type;
+
     const avgPrice = nights > 0 ? totalRoomPrice / nights : totalRoomPrice;
-    return { type, displayType: type, price: avgPrice };
+    return { type, displayType, price: avgPrice };
   });
 
   const displayRoomTypeName = perRoomPricing[0]?.displayType || "Double";
@@ -200,19 +208,25 @@ export function HotelBookingModal({
     setGuestsApplied(true);
   };
 
-  const handleGuestSubmit = async (passengerData: PassengerFormData) => {
+  const handleGuestSubmit = (passengerData: PassengerFormData) => {
     if (!hotel || !checkIn || !checkOut) return;
     if (isSoldOut) {
       toast.error("Sold out for these dates. Please choose different dates.");
       return;
     }
+    setPendingPassengerData(passengerData);
+    setStep("review");
+  };
+
+  const handleConfirmBooking = async () => {
+    if (!hotel || !checkIn || !checkOut || !pendingPassengerData) return;
     try {
       const booking = await createBooking.mutateAsync({
         booking_type: "hotel",
         hotel_id: hotel.id,
         total_amount: totalPrice,
         passengers: totalGuests,
-        passenger_details: passengerData.passengers.map((p, index) => ({
+        passenger_details: pendingPassengerData.passengers.map((p, index) => ({
           firstName: p.firstName,
           lastName: p.lastName,
           passportNumber: p.passportNumber,
@@ -220,14 +234,14 @@ export function HotelBookingModal({
           documents: p.documents || [],
           isLead: index === 0,
         })),
-        special_requests: passengerData.specialRequests,
+        special_requests: pendingPassengerData.specialRequests,
         notes: JSON.stringify({
           check_in: checkIn.toISOString(),
           check_out: checkOut.toISOString(),
           rooms: roomCount,
           roomConfig: rooms,
-          contactEmail: passengerData.contactEmail,
-          contactPhone: passengerData.contactPhone,
+          contactEmail: pendingPassengerData.contactEmail,
+          contactPhone: pendingPassengerData.contactPhone,
         }),
         status: "pending_payment",
       });
@@ -235,7 +249,7 @@ export function HotelBookingModal({
       setBookingResult({
         id: booking.id,
         number: booking.booking_number,
-        passengerData,
+        passengerData: pendingPassengerData,
       });
       setStep("payment");
       toast.success(`Booking created! Please complete payment.`);
@@ -328,7 +342,7 @@ export function HotelBookingModal({
       <DialogContent className="!max-w-none !w-auto !left-[var(--sidebar-width,16rem)] !right-0 !top-0 !translate-x-0 !translate-y-0 h-screen sm:rounded-none overflow-y-auto p-0">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px]">
           {/* Left Panel - Main Content */}
-          <div className="p-6 space-y-5 overflow-y-auto max-h-[85vh]">
+          <div className="p-6 space-y-5">
             <DialogHeader>
               <DialogTitle className="text-xl">Book Hotel</DialogTitle>
             </DialogHeader>
@@ -337,7 +351,7 @@ export function HotelBookingModal({
             <div className="bg-white rounded-2xl p-6 space-y-4 border border-border shadow-sm hover:shadow-md transition-shadow duration-300">
               <div className="flex flex-col md:flex-row md:items-center gap-6">
                 <div className="h-24 w-24 rounded-2xl overflow-hidden bg-muted flex-shrink-0 border-2 border-primary/10">
-                  {hotel.images?.[0] ? (
+                  {hotel?.images?.[0] ? (
                     <img src={hotel.images[0]} alt={hotel.name} className="w-full h-full object-cover" />
                   ) : (
                     <Hotel className="h-10 w-10 text-primary/40" />
@@ -347,19 +361,25 @@ export function HotelBookingModal({
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold text-2xl text-foreground tracking-tight">{hotel.name}</h3>
                     <div className="flex items-center gap-0.5">
-                      {[...Array(hotel.star_rating || 3)].map((_, i) => (
-                        <Star key={i} className="h-4 w-4 text-amber-400 fill-amber-400" />
-                      ))}
+                    {([...Array(hotel?.star_rating || 3)]).map((_, i) => (
+                      <Star key={i} className="h-4 w-4 text-amber-400 fill-amber-400" />
+                    ))}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                     <span className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
                       <MapPin className="h-3.5 w-3.5 text-primary" />
-                      {hotel.cities?.name}, {hotel.cities?.country}
+                      {hotel?.cities?.name}, {hotel?.cities?.country}
                     </span>
                     <span className="text-sm font-medium text-primary bg-primary/5 px-2.5 py-0.5 rounded-full border border-primary/10">
                       {displayRoomTypeName}
                     </span>
+                    {hotel?.amenities?.some(a => a.toLowerCase().includes("breakfast") || a.toLowerCase().includes("buffet") || a.toLowerCase() === "bb") && (
+                      <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[9px] font-black tracking-tight px-1.5 h-5 flex items-center gap-1 shadow-sm ring-1 ring-amber-500/20">
+                        <Coffee className="h-2.5 w-2.5" />
+                        BB
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col items-start md:items-end justify-center bg-primary/5 p-4 rounded-xl border border-primary/10 min-w-[140px]">
@@ -450,8 +470,95 @@ export function HotelBookingModal({
               />
             )}
 
+            {/* Review Step */}
+            {step === "review" && pendingPassengerData && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-primary/5 rounded-2xl p-6 border border-primary/10">
+                  <h3 className="text-xl font-bold text-primary mb-1">Final Review</h3>
+                  <p className="text-sm text-muted-foreground">Please double check all details before confirming your booking.</p>
+                </div>
+
+                {/* Traveler Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Traveler Information
+                    </h4>
+                    <div className="space-y-3">
+                      {pendingPassengerData.passengers.map((p, i) => (
+                        <div key={i} className="bg-white p-3 rounded-xl border border-border/60 shadow-sm flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">{p.firstName} {p.lastName}</p>
+                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tight">
+                              Passenger {i + 1} {i === 0 ? "(Lead)" : ""}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-[9px] font-bold">
+                            {p.passportNumber || "No Passport ID"}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Booking Details
+                    </h4>
+                    <div className="bg-white p-4 rounded-xl border border-border/60 shadow-sm space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Dates</span>
+                        <span className="font-bold text-slate-800">
+                          {checkIn && format(checkIn, "MMM dd")} - {checkOut && format(checkOut, "MMM dd, yyyy")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Rooms</span>
+                        <span className="font-bold text-slate-800">{roomCount} Room(s)</span>
+                      </div>
+                      <div className="flex justify-between text-sm pt-2 border-t border-slate-50">
+                        <span className="text-slate-500">Total Price</span>
+                        <span className="font-bold text-primary text-lg">${totalPrice}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                      <p className="text-[10px] font-bold text-amber-800 uppercase mb-1">Agent / Contact</p>
+                      <p className="text-xs font-medium text-amber-900">{pendingPassengerData.agentName || "Self"} · {pendingPassengerData.agencyEmail}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 pt-4">
+                  <Button
+                    variant="outline"
+                    className="h-12 flex-1 rounded-xl font-bold"
+                    onClick={() => setStep("form")}
+                  >
+                    Back to Edit
+                  </Button>
+                  <Button
+                    className="h-12 flex-[2] rounded-xl font-bold bg-primary text-white shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all"
+                    onClick={handleConfirmBooking}
+                    disabled={createBooking.isPending}
+                  >
+                    {createBooking.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating Booking...
+                      </>
+                    ) : (
+                      "Confirm & Create Booking"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Passenger Forms - grouped by room */}
-            {guestsApplied && nights > 0 && (
+            {step === "form" && guestsApplied && nights > 0 && (
               <div>
                 <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
                   <Users className="h-5 w-5 text-primary" />
@@ -481,7 +588,7 @@ export function HotelBookingModal({
 
               {/* Hotel mini-card */}
               <div className="rounded-2xl overflow-hidden border border-border bg-white shadow-sm ring-1 ring-black/[0.02]">
-                {hotel.images?.[0] ? (
+                {hotel?.images?.[0] ? (
                   <img src={hotel.images[0]} alt={hotel.name} className="w-full h-32 object-cover" />
                 ) : (
                   <div className="w-full h-32 bg-slate-100 flex items-center justify-center">
@@ -492,7 +599,7 @@ export function HotelBookingModal({
                   <h5 className="font-bold text-sm text-slate-800 leading-tight">{hotel.name}</h5>
                   <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                     <MapPin className="h-3 w-3 text-primary" />
-                    {hotel.cities?.name}, {hotel.cities?.country}
+                    {hotel?.cities?.name}, {hotel?.cities?.country}
                   </p>
                 </div>
               </div>

@@ -69,13 +69,13 @@ export function useBookings() {
             .from("profiles")
             .select("*")
             .eq("id", booking.user_id)
-            .single();
+            .maybeSingle();
           
           const { data: agency } = await supabase
             .from("agencies")
             .select("*")
             .eq("user_id", booking.user_id)
-            .single();
+            .maybeSingle();
           
           return {
             ...booking,
@@ -130,13 +130,13 @@ export function useBooking(id: string) {
         .from("profiles")
         .select("*")
         .eq("id", data.user_id)
-        .single();
+        .maybeSingle();
       
       const { data: agency } = await supabase
         .from("agencies")
         .select("*")
         .eq("user_id", data.user_id)
-        .single();
+        .maybeSingle();
       
       return {
         ...data,

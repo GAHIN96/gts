@@ -15,7 +15,7 @@ import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function Airports() {
-  const { airports, isLoading, createAirport, updateAirport, deleteAirport } = useAirports();
+  const { airports, isLoading, createAirport, updateAirport, deleteAirport, seedAirports } = useAirports();
   const { data: cities = [] } = useCities();
   const { role } = useAuth();
   const isAdmin = role === "admin";
@@ -47,7 +47,14 @@ export default function Airports() {
           <h1 className="text-2xl font-bold font-heading flex items-center gap-2"><Building2 className="h-6 w-6 text-primary" /> Airports</h1>
           <p className="text-muted-foreground text-sm">Manage airports and their city associations</p>
         </div>
-        {isAdmin && <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" />Add Airport</Button>}
+        {isAdmin && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => seedAirports.mutate()} disabled={seedAirports.isPending}>
+              {seedAirports.isPending ? "Seeding..." : "Seed Regional Airports"}
+            </Button>
+            <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" />Add Airport</Button>
+          </div>
+        )}
       </div>
 
       <div className="relative max-w-sm">

@@ -46,8 +46,14 @@ export default function Auth() {
   const recordAttempt = async (email: string, success: boolean, userId?: string) => {
     try {
       await supabase.functions.invoke('login-security', {
-        body: { action: 'record_attempt', email, ip_address: 'client', user_agent: navigator.userAgent, user_id: userId },
-        headers: { 'x-login-success': success.toString() },
+        body: { 
+          action: 'record_attempt', 
+          email, 
+          ip_address: 'client', 
+          user_agent: navigator.userAgent, 
+          user_id: userId,
+          success: success 
+        },
       });
     } catch { /* silent */ }
   };
@@ -71,7 +77,7 @@ export default function Auth() {
       toast.error(error.message === 'Invalid login credentials' ? `Invalid email or password.${remaining > 0 ? ` ${remaining} attempts remaining.` : ''}` : error.message);
     } else {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      await recordAttempt(loginEmail, true, currentUser?.id);
+      // await recordAttempt(loginEmail, true, currentUser?.id);
       setAttemptsRemaining(null);
       toast.success('Welcome back!');
       navigate('/');

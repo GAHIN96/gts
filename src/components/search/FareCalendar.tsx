@@ -204,7 +204,7 @@ export function FareCalendar({ flights, fromCity, toCity, onDateSelect, getEffec
               return (
                 <div
                   key={`empty-${idx}`}
-                  className="h-[72px] border-b border-r border-border/20 bg-muted/10"
+                  className="h-[60px] border-b border-r border-border/20 bg-muted/10"
                 />
               );
             }
@@ -221,7 +221,7 @@ export function FareCalendar({ flights, fromCity, toCity, onDateSelect, getEffec
                 disabled={isPast || !data || !hasRoute}
                 onClick={() => data && onDateSelect?.(day, data.cheapest)}
                 className={cn(
-                  "h-[72px] border-b border-r border-border/20 p-1 text-left transition-all relative group",
+                  "h-[60px] border-b border-r border-border/20 p-1 text-left transition-all relative group",
                   isPast && "opacity-40 cursor-not-allowed bg-muted/10",
                   !isPast && data && hasRoute && "hover:ring-2 hover:ring-primary/40 hover:z-10 cursor-pointer",
                   !isPast && data && getCellBg(data.cheapest),

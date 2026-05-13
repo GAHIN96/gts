@@ -105,7 +105,6 @@ function AvailabilityCalendar({
         }}
         modifiersClassNames={{
           available: "!bg-green-100 !text-green-800 hover:!bg-green-200 dark:!bg-green-900/30 dark:!text-green-400",
-          limited: "!bg-yellow-100 !text-yellow-800 hover:!bg-yellow-200 dark:!bg-yellow-900/30 dark:!text-yellow-400",
           soldOut: "!bg-red-100 !text-red-800 hover:!bg-red-200 dark:!bg-red-900/30 dark:!text-red-400",
         }}
         components={{
@@ -170,10 +169,6 @@ function AvailabilityCalendar({
           <div className="flex items-center gap-1">
             <div className="h-3 w-3 rounded-sm bg-green-100 dark:bg-green-900/30" />
             <span className="text-muted-foreground">Available</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded-sm bg-yellow-100 dark:bg-yellow-900/30" />
-            <span className="text-muted-foreground">Limited</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="h-3 w-3 rounded-sm bg-red-100 dark:bg-red-900/30" />

@@ -165,18 +165,7 @@ export function FlightSelector({
                         </div>
                       </div>
 
-                      {/* Availability warning */}
-                      {hasLimitedSeats && (
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <Users className="h-3.5 w-3.5 text-[hsl(6,100%,69%)]" />
-                          <span className="text-xs font-medium text-[hsl(6,100%,50%)]">
-                            Only {flight.available_seats} seats left!
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Price & Selection */}
+                      {/* Price & Selection */}
                     <div className="flex flex-col items-end gap-2">
                       <div className="text-right">
                         <p className="text-2xl font-bold text-[hsl(231,70%,30%)]">

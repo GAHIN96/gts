@@ -394,12 +394,7 @@ const AdditionalServices = () => {
                           {service.per_person ? <Users className="h-3 w-3" /> : <Tag className="h-3 w-3" />}
                           {service.per_person ? "Per person" : "Per booking"}
                         </span>
-                        {!isInactive && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-success bg-success/10 border border-success/20 rounded-full px-2 py-0.5">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Available
-                          </span>
-                        )}
+                          {/* Removed Available badge as requested */}
                       </div>
 
                       <div className="flex-1" />

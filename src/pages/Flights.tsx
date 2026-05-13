@@ -509,10 +509,10 @@ const Flights = () => {
       if (adminSearch) {
         const s = adminSearch.toLowerCase();
         return (
-          f.airline.toLowerCase().includes(s) ||
-          f.departure_city.toLowerCase().includes(s) ||
-          f.arrival_city.toLowerCase().includes(s) ||
-          (f.flight_number || '').toLowerCase().includes(s)
+          (f.airline || "").toLowerCase().includes(s) ||
+          (f.departure_city || "").toLowerCase().includes(s) ||
+          (f.arrival_city || "").toLowerCase().includes(s) ||
+          (f.flight_number || "").toLowerCase().includes(s)
         );
       }
       return true;
@@ -602,11 +602,7 @@ const Flights = () => {
               Add Flight
             </Button>
           }
-          stats={[
-            { icon: PlaneTakeoff, label: "Available", value: stats?.available ?? 0, color: "text-success" },
-            { icon: PlaneTakeoff, label: "Limited", value: stats?.limited ?? 0, color: "text-gold" },
-            { icon: PlaneTakeoff, label: "Sold Out", value: stats?.soldOut ?? 0, color: "text-destructive" },
-          ]}
+          stats={[]}
         />
       )}
 
@@ -716,6 +712,31 @@ const Flights = () => {
       {isManageView && (
         <Card className="shadow-card">
           <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by route, airline, or flight number..."
+                  value={adminSearch}
+                  onChange={(e) => {
+                    setAdminSearch(e.target.value);
+                    setFlightPage(1);
+                  }}
+                  className="pl-9 h-9"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleExportFlights}
+                  className="h-9"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </div>
+            </div>
 
             {isLoading ? (
               <Table>

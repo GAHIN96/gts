@@ -84,9 +84,9 @@ export function InlineFareCalendar({
 
   return (
     <TooltipProvider delayDuration={200}>
-    <div className="p-3 w-[320px]">
+    <div className="p-2 w-[280px]">
       {/* Month nav */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <Button
           variant="ghost"
           size="icon"
@@ -110,14 +110,10 @@ export function InlineFareCalendar({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-3 mb-2 text-[9px]">
+      <div className="flex items-center gap-3 mb-1.5 text-[9px]">
         <div className="flex items-center gap-1">
           <div className="w-2.5 h-2.5 rounded bg-success/20 border border-success/40" />
           <span className="text-muted-foreground">Cheap</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2.5 h-2.5 rounded bg-warning/20 border border-warning/40" />
-          <span className="text-muted-foreground">Mid</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-2.5 h-2.5 rounded bg-destructive/20 border border-destructive/40" />
@@ -137,7 +133,7 @@ export function InlineFareCalendar({
       {/* Day cells */}
       <div className="grid grid-cols-7 gap-0.5">
         {calendarDays.map((day, idx) => {
-          if (!day) return <div key={`e-${idx}`} className="h-[52px]" />;
+          if (!day) return <div key={`e-${idx}`} className="h-[42px]" />;
 
           const dateKey = format(day, "yyyy-MM-dd");
           const price = datePrices[dateKey];
@@ -155,7 +151,7 @@ export function InlineFareCalendar({
               disabled={isDisabled}
               onClick={() => onSelect?.(day)}
               className={cn(
-                "h-[52px] rounded-lg flex flex-col items-center justify-center transition-all text-center relative",
+                "h-[42px] rounded-lg flex flex-col items-center justify-center transition-all text-center relative",
                 isDisabled && "opacity-30 cursor-not-allowed",
                 !isDisabled && "hover:ring-2 hover:ring-primary/40 cursor-pointer",
                 isSelected && "ring-2 ring-primary bg-primary/10",
@@ -177,8 +173,6 @@ export function InlineFareCalendar({
                 <span className={cn("text-[10px] leading-none mt-0.5", addOnPrice > 0 ? "font-bold text-primary" : getPriceColor(price))}>
                   ${displayPrice}
                 </span>
-              ) : limitedSet.has(dateKey) && !isDisabled ? (
-                <span className="text-[9px] text-warning leading-none mt-0.5">Limited</span>
               ) : soldOutSet.has(dateKey) ? (
                 <span className="text-[9px] text-destructive leading-none mt-0.5">Full</span>
               ) : null}

@@ -76,8 +76,8 @@ export function pickRoomBand<T extends RoomLike>(
 
   const candidates = sameType.length > 0 ? sameType : active;
 
-  // DEBUG LOG
-  console.log(`[pickRoomBand] type=${roomType} req=${requested}`);
+  // Removed debug log to prevent console flooding during large result sets
+  // console.log(`[pickRoomBand] type=${roomType} req=${requested}`);
 
   const req = Math.max(1, Math.floor(Number(requested) || 1));
 

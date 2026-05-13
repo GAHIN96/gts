@@ -62,7 +62,7 @@ export function evaluateRoom(room: RoomConfig): RoomEvaluation {
       return { type: "double", label: "Double", note: "Child priced as Adult" };
     }
     if (children6to12 === 1 && children2to6 === 1) {
-      return { type: "double", label: "Double", note: "CHD 6-12 priced as Adult" };
+      return { type: "double", label: "Double", note: "CHD 2-12 priced as Adult" };
     }
     if (children6to12 >= 2) {
       return { type: "double_extra_bed", label: "Double + Extra Bed", note: "1 child priced as Adult" };
@@ -81,7 +81,7 @@ export function evaluateRoom(room: RoomConfig): RoomEvaluation {
       return { type: "double_extra_bed", label: "Double + Extra Bed", note: "Under-6 shares bed" };
     }
     if (children6to12 >= 2) {
-      return { type: "needs_split", label: "Needs 2 Rooms", needsSplit: true, note: "2 children 6+ — split into 2 rooms" };
+      return { type: "needs_split", label: "Needs 2 Rooms", needsSplit: true, note: "2 children 2+ — split into 2 rooms" };
     }
   }
 
@@ -165,9 +165,9 @@ export function HotelRoomConfigurator({ rooms, onRoomsChange, onApply }: HotelRo
 
   const ageCategories: { key: keyof RoomConfig; label: string; subtitle: string; icon: typeof Users }[] = [
     { key: "adults", label: "Adults", subtitle: "12+ years", icon: Users },
-    { key: "children6to12", label: "Child", subtitle: "6-12 yrs · extra bed", icon: Users },
+    { key: "children6to12", label: "Child", subtitle: "2-12 yrs · extra bed", icon: Users },
     { key: "children2to6", label: "Child", subtitle: "Under 6 · shares bed", icon: Baby },
-    { key: "infants", label: "Infant", subtitle: "Under 2 · free", icon: Baby },
+    { key: "infants", label: "Infant", subtitle: "Under 2", icon: Baby },
   ];
 
   return (

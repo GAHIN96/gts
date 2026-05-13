@@ -735,7 +735,7 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">Rooms From</th>
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">Rooms To</th>
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Adult</th>
-                        <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Child (6-12)</th>
+                        <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Child (2-12)</th>
                         <th className="text-left py-2.5 px-2 text-xs uppercase text-muted-foreground font-semibold">$/Child (2-6)</th>
                         <th className="py-2.5 px-2 w-20"></th>
                       </tr>
@@ -939,7 +939,7 @@ export function HotelForm({ open, onOpenChange, hotel, inline = false }: HotelFo
                       <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Rooms From</th>
                       <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Rooms To</th>
                       <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">$/Adult</th>
-                      <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">$/Child (6-12)</th>
+                      <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">$/Child (2-12)</th>
                       <th className="text-center py-3 px-3 text-[10px] uppercase text-muted-foreground font-bold tracking-wider">$/Child (2-6)</th>
                       <th className="py-3 px-3 w-10"></th>
                     </tr>

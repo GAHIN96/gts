@@ -16,54 +16,95 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const ADMIN_EMAILS = ['bear46177@gmail.com'];
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserRole = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .single();
-    
-    if (!error && data) {
-      setRole(data.role as AppRole);
+  const fetchUserRole = async (userId: string, email?: string) => {
+    // Priority 1: Admin Email Override
+    if (email && ADMIN_EMAILS.includes(email.toLowerCase())) {
+      setRole('admin');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+      
+      if (!error && data && data.length > 0) {
+        const roles = data.map((entry) => entry.role as AppRole);
+        if (roles.includes('admin')) {
+          setRole('admin');
+        } else if (roles.includes('finance')) {
+          setRole('finance');
+        } else {
+          setRole('agency');
+        }
+      } else {
+        console.warn("No role found for user:", userId);
+        setRole(null);
+      }
+    } catch (err) {
+      console.error("Error fetching user role:", err);
+      setRole(null);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Defer role fetching with setTimeout to prevent deadlock
         if (session?.user) {
-          setTimeout(() => {
-            fetchUserRole(session.user.id);
-          }, 0);
+          await fetchUserRole(session.user.id, session.user.email);
         } else {
           setRole(null);
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error) {
+        console.error("Error getting session:", error);
+        setLoading(false);
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserRole(session.user.id);
+        await fetchUserRole(session.user.id, session.user.email);
+      } else {
+        setLoading(false);
       }
+    }).catch(err => {
+      console.error("Auth session catch error:", err);
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    const safetyTimeout = setTimeout(() => {
+      setLoading(prev => {
+        if (prev) console.warn("Auth loading safety timeout triggered");
+        return false;
+      });
+    }, 3000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {

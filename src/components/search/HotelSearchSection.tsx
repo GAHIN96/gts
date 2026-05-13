@@ -33,6 +33,7 @@ import {
   Clock,
   GitCompareArrows,
   Check,
+  CheckCircle,
   Minus,
   Trash2,
   Moon,
@@ -205,7 +206,8 @@ function getHotelRoomPrice(
   hotelAvailableDates: any[] = [],
   hotelBookings: any[] = [],
 ): number {
-  const rooms = (hotel.hotel_rooms || []).filter(r => r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
+  const hotelRooms = Array.isArray(hotel.hotel_rooms) ? hotel.hotel_rooms : [];
+  const rooms = hotelRooms.filter(r => r && r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
   const specials = (hotel as any).hotel_special_prices || [];
   const requestedRooms = roomConfigs.length || 1;
   const firstRoom = roomConfigs[0] || { adults: 1, children6to12: 0, children2to6: 0, infants: 0 };
@@ -220,7 +222,7 @@ function getHotelRoomPrice(
 
   // PHASE 2 & 3: Match Tier based on Inventory and return price
   const dayDetails = buildDayDetails(hotelAvailableDates, hotelBookings, hotel.id);
-  const dayKey = format(checkIn, "yyyy-MM-dd");
+  const dayKey = (checkIn instanceof Date && !isNaN(checkIn.getTime())) ? format(checkIn, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
   const inventoryRemaining = dayDetails[dayKey]?.remaining ?? 0;
 
   const resolved = resolveRoomPrice(rooms as any, neededType, inventoryRemaining, specials, checkIn);
@@ -250,8 +252,9 @@ function getHotelStayPricing(
   const nights = Math.max(0, differenceInDays(checkOut, checkIn));
   if (nights <= 0) return null;
 
-  const rooms = (hotel.hotel_rooms || []).filter((r: any) => r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
-  const specials: any[] = (hotel as any).hotel_special_prices || [];
+  const hotelRooms = Array.isArray(hotel.hotel_rooms) ? hotel.hotel_rooms : [];
+  const rooms = hotelRooms.filter((r: any) => r && r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
+  const specials: any[] = Array.isArray((hotel as any).hotel_special_prices) ? (hotel as any).hotel_special_prices : [];
   const dayDetails = buildDayDetails(hotelAvailableDates, hotelBookings, hotel.id);
 
   let totalForAllRooms = 0;
@@ -483,6 +486,12 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     );
   }, [checkIn, checkOut, hotelAvailableDates, hotelBookings]);
 
+  const hasInventoryWindow = useCallback((hotelId: string) => {
+    return hotelAvailableDates.some(
+      (entry) => entry.hotel_id === hotelId && entry.from_date && entry.to_date,
+    );
+  }, [hotelAvailableDates]);
+
   // Price bounds for slider — uses period-available inventory to pick the band.
   const priceBounds = useMemo(() => {
     if (!searchedHotels.length) return { min: 0, max: 5000 };
@@ -491,7 +500,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
       .filter(p => p > 0);
     if (!prices.length) return { min: 0, max: 5000 };
     return { min: Math.floor(Math.min(...prices)), max: Math.ceil(Math.max(...prices)) };
-  }, [searchedHotels, searchedRoomType, roomCount]);
+  }, [searchedHotels, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings]);
 
 
   // Reset price range when results change
@@ -681,6 +690,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     // availability and we keep the hotel visible.)
     if (checkIn && checkOut) {
       list = list.filter(h => {
+        if (!hasInventoryWindow(h.id)) return true;
         const avail = computePeriodAvail(h);
         // null = no inventory window covers these dates → treat as sold out.
         return avail !== null && avail > 0;
@@ -694,7 +704,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
     // Price filter
     list = list.filter(h => {
-      const price = getHotelRoomPrice(h, searchedRoomType, roomCount, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+      const price = getHotelRoomPrice(h, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
       return price >= priceRange[0] && price <= priceRange[1];
     });
 
@@ -713,8 +723,8 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     // Sort
     list.sort((a, b) => {
       try {
-        const priceA = getHotelRoomPrice(a, searchedRoomType, roomCount, checkIn, checkOut, hotelAvailableDates, hotelBookings);
-        const priceB = getHotelRoomPrice(b, searchedRoomType, roomCount, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+        const priceA = getHotelRoomPrice(a, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+        const priceB = getHotelRoomPrice(b, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
         switch (sortBy) {
           case "price-asc": return priceA - priceB;
           case "price-desc": return priceB - priceA;
@@ -730,7 +740,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     });
 
     return list;
-  }, [searchedHotels, minStars, priceRange, selectedAmenities, sortBy, checkIn, checkOut, computePeriodAvail, searchedRoomType, roomCount]);
+  }, [showResults, searchedHotels, minStars, priceRange, selectedAmenities, sortBy, checkIn, checkOut, computePeriodAvail, hasInventoryWindow, searchedRoomType, roomConfigs, hotelAvailableDates, hotelBookings]);
 
   // Location-grouped hotels
   const locationGrouped = useMemo(() => {
@@ -748,7 +758,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     if (filteredHotels.length === 0) return null;
     const withPrices = filteredHotels.map(h => ({
       id: h.id,
-      price: getHotelRoomPrice(h, searchedRoomType, roomCount, checkIn, checkOut, hotelAvailableDates, hotelBookings),
+      price: getHotelRoomPrice(h, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings),
       stars: h.star_rating || 0,
     })).filter(h => h.price > 0);
 
@@ -773,14 +783,15 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
     }
 
     return { bestPriceId, bestValueId };
-  }, [filteredHotels]);
+  }, [filteredHotels, searchedRoomType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings]);
 
   // Total available rooms for the selected stay period from hotel_available_dates
   const getTotalAvailableRooms = (hotel: HotelType) => {
     if (!checkIn || !checkOut) return null;
 
     let minAvailable: number | null = null;
-    for (let i = 0; i < Math.max(1, differenceInDays(checkOut, checkIn)); i++) {
+    const diff = checkIn && checkOut ? differenceInDays(checkOut, checkIn) : 0;
+    for (let i = 0; i < Math.max(1, diff); i++) {
       const date = addDays(checkIn, i);
       const periodAvailable = getPeriodAvailableRooms(hotel, date);
       if (periodAvailable === null) return null;
@@ -1062,6 +1073,8 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
 
 
+  const allFieldsReady = Boolean(destination && checkIn && checkOut);
+
   // Render a single hotel card
   const renderHotelCard = (hotel: HotelType, index: number) => {
     const isBestPrice = resultStats?.bestPriceId === hotel.id;
@@ -1158,7 +1171,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
             {/* Star rating plaque */}
             {(hotel.star_rating || 0) > 0 && (
               <div className="absolute bottom-2.5 left-2.5 flex items-center gap-0.5 bg-black/65 backdrop-blur-md rounded-md px-2 py-1 ring-1 ring-white/15 shadow-lg">
-                {Array.from({ length: hotel.star_rating || 0 }).map((_, i) => (
+                {Array.from({ length: Math.max(0, hotel.star_rating || 0) }).map((_, i) => (
                   <Star key={i} className="h-3 w-3 fill-gold text-gold" />
                 ))}
               </div>
@@ -1202,15 +1215,28 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
               {hotel.amenities && hotel.amenities.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap">
-                  {hotel.amenities.slice(0, 4).map((amenity, i) => {
-                    const IconComp = getAmenityIcon(amenity);
-                    return (
-                      <div key={i} className="flex items-center gap-1.5 text-[10.5px] font-medium text-foreground/75 bg-muted/50 ring-1 ring-border/50 rounded-full px-2.5 py-1 hover:ring-primary/40 hover:text-foreground transition-all">
-                        <IconComp className="h-2.5 w-2.5 text-primary/70" />
-                        <span>{amenity}</span>
-                      </div>
-                    );
-                  })}
+                  {(() => {
+                    // Filter out ALL breakfast/buffet items from the small chips 
+                    // because we show it as a dedicated status badge now.
+                    const amenities = Array.isArray(hotel.amenities) ? hotel.amenities : [];
+                    const list = amenities.filter(a => {
+                      const lower = a?.toLowerCase() || "";
+                      return !lower.includes("breakfast") && 
+                             !lower.includes("buffet") && 
+                             lower !== "bb";
+                    });
+                    
+                    return list.slice(0, 4).map((amenity, i) => {
+                      const IconComp = getAmenityIcon(amenity);
+                      return (
+                        <div key={i} className="flex items-center gap-1.5 text-[10.5px] font-medium rounded-full px-2.5 py-1 transition-all ring-1 text-foreground/75 bg-muted/50 ring-border/50 hover:ring-primary/40 hover:text-foreground">
+                          <IconComp className="h-2.5 w-2.5 text-primary/70" />
+                          <span>{amenity}</span>
+                        </div>
+                      );
+                    });
+                  })()
+                  }
                   {hotel.amenities.length > 4 && (
                     <div className="flex items-center text-[10.5px] font-bold text-primary bg-primary/10 ring-1 ring-primary/30 rounded-full px-2.5 py-1">
                       +{hotel.amenities.length - 4} more
@@ -1219,22 +1245,40 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
                 </div>
               )}
 
-              {/* Availability indicator */}
+              {/* Availability & Breakfast Status */}
               {allFieldsReady && (
                 <div className="flex items-center gap-2 mt-1">
                   {(() => {
                     const avail = getTotalAvailableRooms(hotel);
                     if (avail === null) return null;
                     const isLow = avail > 0 && avail < 5;
+                    
+                    const hasBreakfast = Array.isArray(hotel.amenities) && hotel.amenities.some(a => {
+                      const lower = a?.toLowerCase() || "";
+                      return lower.includes("breakfast") || 
+                             lower.includes("buffet") || 
+                             lower === "bb";
+                    });
+
                     return (
-                      <Badge variant="outline" className={cn(
-                        "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border",
-                        avail === 0 ? "bg-rose-50 text-rose-600 border-rose-200" :
-                          isLow ? "bg-amber-50 text-amber-600 border-amber-200" :
-                            "bg-emerald-50 text-emerald-600 border-emerald-200"
-                      )}>
-                        {avail === 0 ? "Sold Out" : `${avail} Rooms Available`}
-                      </Badge>
+                      <>
+                        <Badge variant="outline" className={cn(
+                          "text-[10px] font-extrabold uppercase tracking-[0.05em] px-3 py-1.5 rounded-lg border shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] transition-all duration-300 flex items-center gap-2",
+                          avail === 0 ? "bg-rose-500/10 text-rose-600 border-rose-500/20" :
+                            isLow ? "bg-amber-500/10 text-amber-600 border-amber-500/20" :
+                              "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/15"
+                        )}>
+                          {avail === 0 ? <X className="h-3.5 w-3.5" /> : <CheckCircle className="h-3.5 w-3.5 opacity-90" />}
+                          {avail === 0 ? "Sold Out" : `${avail} Rooms Available`}
+                        </Badge>
+
+                        {hasBreakfast && (
+                          <Badge variant="outline" className="text-[10px] font-extrabold uppercase tracking-[0.05em] px-3 py-1.5 rounded-lg border bg-sky-500/10 text-sky-600 border-sky-500/20 flex items-center gap-2 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] hover:bg-sky-500/15 transition-all duration-300">
+                            <Coffee className="h-3.5 w-3.5 opacity-90" />
+                            Breakfast Included
+                          </Badge>
+                        )}
+                      </>
                     );
                   })()}
                 </div>
@@ -1248,9 +1292,11 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
               {price > 0 && (
                 <div className="space-y-1">
-                  <Badge variant="outline" className="text-[9.5px] font-bold uppercase tracking-[0.15em] border-primary/30 text-primary bg-primary/5">
-                    {searchedRoomType}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className="text-[9.5px] font-bold uppercase tracking-[0.15em] border-primary/30 text-primary bg-primary/5">
+                      {searchedRoomType}
+                    </Badge>
+                  </div>
                   {totalPrice ? (
                     <>
                       <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">From</p>
@@ -1302,8 +1348,6 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
       </div>
     );
   };
-
-  const allFieldsReady = Boolean(destination && checkIn && checkOut);
 
   return (
     <div className="space-y-4">
@@ -1399,7 +1443,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
                   {destinationOpen && (
                     <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-xl border border-border/60 bg-popover text-popover-foreground shadow-xl overflow-hidden animate-fade-in">
                       <Command
-                        className="bg-transparent"
+                        className="bg-card text-foreground"
                         shouldFilter={true}
                         filter={(value, search) => {
                           if (!search) return 1;

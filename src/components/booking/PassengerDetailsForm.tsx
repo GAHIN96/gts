@@ -42,8 +42,8 @@ const createPassengerSchema = (requiredDocuments: DocumentRequirement[]) => {
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().min(1, "Last name is required"),
     dateOfBirth: z.string().min(1, "Date of birth is required"),
-    passportNumber: z.string().min(1, "Passport number is required"),
-    passportExpiry: z.string().min(1, "Passport expiry is required"),
+    passportNumber: z.string().optional(),
+    passportExpiry: z.string().optional(),
     documents: z.array(z.object({
       documentId: z.string(),
       documentName: z.string(),
@@ -871,7 +871,7 @@ export function PassengerDetailsForm({
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-foreground flex items-center gap-2 flex-wrap">
-                        Room {room.roomNumber} - {room.bedType === 'double_extra_bed' ? 'Double + Extra Bed' : room.bedType === 'single' ? 'Single' : room.bedType === 'triple' ? 'Triple' : room.bedType === 'double' ? 'Double' : room.bedType || 'Double'}
+                        Room {room.roomNumber} - {room.bedType || 'Double'}
                         {issueCountByRoom[room.roomNumber] > 0 && (
                           <Badge variant="destructive" className="text-[10px] gap-1 h-5">
                             <AlertCircle className="h-3 w-3" />
@@ -1289,15 +1289,15 @@ export function PassengerDetailsForm({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <FormField
                   control={form.control}
-                  name="agentName"
+                  name="agencyName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Agent Name</FormLabel>
+                      <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Agency Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="Assigned Agent" {...field} className="h-10 bg-muted/40 border-border/60" />
+                        <Input placeholder="Agency Name" {...field} className="h-10 bg-muted/40 border-border/60" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1321,49 +1321,7 @@ export function PassengerDetailsForm({
           </Card>
         </div>
 
-        {/* Passenger Information */}
-        {!hidePassengerInfo && (
-        <div className="grid grid-cols-1 gap-4">
-          <Card className="shadow-card">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <User className="h-4 w-4 text-primary" />
-                Passenger Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="agencyName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs">Leader Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Leader Full Name" {...field} className="h-9" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="agencyPhone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs">Leader's Phone Number</FormLabel>
-                      <FormControl>
-                        <Input type="tel" placeholder="+964 xxx" {...field} className="h-9" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        )}
+
 
         {/* Special Requests */}
         {!hideSpecialRequests && (

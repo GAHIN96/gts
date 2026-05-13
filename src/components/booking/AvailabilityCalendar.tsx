@@ -151,8 +151,6 @@ export function AvailabilityCalendar({
                   departure && !isPast && "cursor-pointer",
                   // Available dates - dark blue (primary)
                   hasAvailability && !isPast && !isSelected && !isReturn && !isLowAvailability && "bg-primary/10 dark:bg-primary/20 text-primary font-medium hover:bg-primary/20 dark:hover:bg-primary/30 border border-primary/20",
-                  // Low availability - amber
-                  hasAvailability && !isPast && !isSelected && isLowAvailability && "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-medium hover:bg-amber-100 dark:hover:bg-amber-950/50 border border-amber-200 dark:border-amber-800",
                   // Selected departure date
                   isSelected && "bg-primary text-primary-foreground font-semibold shadow-md border border-primary",
                   // In range
@@ -201,10 +199,6 @@ export function AvailabilityCalendar({
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded bg-primary/15 border border-primary/30" />
             <span className="text-[10px] text-muted-foreground">Available</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-300 dark:bg-amber-950/50 dark:border-amber-700" />
-            <span className="text-[10px] text-muted-foreground">Limited</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded bg-primary" />

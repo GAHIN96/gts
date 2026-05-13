@@ -219,10 +219,7 @@ const Hotels = () => {
               Add Hotel
             </Button>
           }
-          stats={stats ? [
-            { icon: Hotel, label: "Total", value: stats.total ?? 0, color: "text-primary" },
-            { icon: Star, label: "Active", value: stats.active ?? 0, color: "text-success" },
-          ] : undefined}
+          stats={[]}
         />
       )}
 

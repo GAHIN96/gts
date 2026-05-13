@@ -50,10 +50,10 @@ export function useDashboardStats() {
       if (bookingsError) throw bookingsError;
 
       const totalBookings = bookings?.length || 0;
-      const confirmedBookings = bookings?.filter(b => b.status === "confirmed").length || 0;
+      const confirmedBookings = bookings?.filter(b => b.status === "confirmed")?.length || 0;
       const pendingBookings = bookings?.filter(b => 
         b.status === "pending_payment" || b.status === "payment_under_review"
-      ).length || 0;
+      )?.length || 0;
       
       const totalRevenue = bookings?.reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
       const confirmedRevenue = bookings

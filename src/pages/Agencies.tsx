@@ -121,9 +121,9 @@ const Agencies = () => {
 
   const stats = {
     total: agencies?.length || 0,
-    active: agencies?.filter((a) => a.is_active && a.is_verified).length || 0,
-    pending: agencies?.filter((a) => !a.is_verified).length || 0,
-    blocked: agencies?.filter((a) => !a.is_active).length || 0,
+    active: agencies?.filter((a) => a.is_active && a.is_verified)?.length || 0,
+    pending: agencies?.filter((a) => !a.is_verified)?.length || 0,
+    blocked: agencies?.filter((a) => !a.is_active)?.length || 0,
   };
 
   const handleVerify = async (agency: Agency) => {

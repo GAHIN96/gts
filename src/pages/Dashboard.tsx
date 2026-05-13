@@ -604,24 +604,30 @@ const AgencyDashboard = () => {
   };
 
   // Get upcoming departures across all packages
-  const allUpcomingDepartures = packages?.flatMap((pkg) => 
-    pkg.package_departures
-      ?.filter((d) => d.is_active && new Date(d.departure_date) > new Date())
-      .map((dep) => ({
-        ...dep,
-        packageName: pkg.name,
-        packageId: pkg.id,
-        cityName: pkg.cities?.name,
-        nights: pkg.nights,
-      })) || []
-  ).sort((a, b) => new Date(a.departure_date).getTime() - new Date(b.departure_date).getTime())
-  .slice(0, 6);
+  const allUpcomingDepartures = useMemo(() => {
+    if (!packages) return [];
+    return packages.flatMap((pkg) => 
+      pkg.package_departures
+        ?.filter((d) => d.is_active && new Date(d.departure_date) > new Date())
+        .map((dep) => ({
+          ...dep,
+          packageName: pkg.name,
+          packageId: pkg.id,
+          cityName: pkg.cities?.name,
+          nights: pkg.nights,
+        })) || []
+    ).sort((a, b) => new Date(a.departure_date).getTime() - new Date(b.departure_date).getTime())
+    .slice(0, 6);
+  }, [packages]);
 
   // Departures within 48 hours
-  const departingSoon = allUpcomingDepartures?.filter(dep => {
-    const hoursUntil = differenceInHours(new Date(dep.departure_date), new Date());
-    return hoursUntil >= 0 && hoursUntil <= 48;
-  }) || [];
+  const departingSoon = useMemo(() => {
+    if (!allUpcomingDepartures) return [];
+    return allUpcomingDepartures.filter(dep => {
+      const hoursUntil = differenceInHours(new Date(dep.departure_date), new Date());
+      return hoursUntil >= 0 && hoursUntil <= 48;
+    });
+  }, [allUpcomingDepartures]);
 
   return (
     <div className="space-y-8 max-w-[1400px] mx-auto">

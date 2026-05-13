@@ -2336,7 +2336,7 @@ export function CustomGroupBuilder() {
                           <div className="p-3 space-y-2.5">
                             {([
                               { key: "adults" as const, label: "Adults", sub: "12+ years", icon: UserRound, min: 1, canIncrease: canAddAdult },
-                              { key: "children" as const, label: "Child", sub: "6-12 years", icon: Users, min: 0, canIncrease: canAddChild },
+                              { key: "children" as const, label: "Child", sub: "2-12 years", icon: Users, min: 0, canIncrease: canAddChild },
                               { key: "children6" as const, label: "Child", sub: "2-6 years", icon: Baby, min: 0, canIncrease: canAddChild6 },
                               { key: "infants" as const, label: "Infant", sub: "Under 2", icon: Baby, min: 0, canIncrease: room.infants < MAX_INFANTS },
                             ]).map(cat => {

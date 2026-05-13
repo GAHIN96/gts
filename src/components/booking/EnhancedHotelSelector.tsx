@@ -209,7 +209,7 @@ function ExpandedHotelView({
           {hotel.address && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1.5">
               <MapPin className="h-4 w-4 text-primary/60" />
-              {hotel.address}
+              {hotel?.address}
             </div>
           )}
         </div>
@@ -221,15 +221,31 @@ function ExpandedHotelView({
         {/* Amenities */}
         {hotel.amenities && hotel.amenities.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {hotel.amenities.map((amenity, idx) => {
-              const Icon = getAmenityIcon(amenity);
-              return (
-                <Badge key={idx} variant="outline" className="gap-1.5 py-2 px-3.5 text-xs rounded-lg border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors">
-                  <Icon className="h-3.5 w-3.5 text-primary/70" />
-                  {amenity}
-                </Badge>
-              );
-            })}
+            {(() => {
+              const list = [...hotel.amenities];
+              const bbIdx = list.findIndex(a => a.toLowerCase().includes("breakfast") || a.toLowerCase().includes("buffet") || a.toLowerCase() === "bb");
+              if (bbIdx > -1) {
+                const item = list.splice(bbIdx, 1)[0];
+                list.unshift(item);
+              }
+              return list.map((amenity, idx) => {
+                const Icon = getAmenityIcon(amenity);
+                const isBB = amenity.toLowerCase().includes("breakfast") || amenity.toLowerCase().includes("buffet") || amenity.toLowerCase() === "bb";
+                return (
+                  <Badge 
+                    key={idx} 
+                    variant="outline" 
+                    className={cn(
+                      "gap-1.5 py-2 px-3.5 text-xs rounded-lg transition-colors border-border/50",
+                      isBB ? "bg-amber-500/10 text-amber-600 border-amber-500/20 font-bold" : "bg-muted/30 hover:bg-muted/50"
+                    )}
+                  >
+                    <Icon className={cn("h-3.5 w-3.5", isBB ? "text-amber-600" : "text-primary/70")} />
+                    {isBB ? "Breakfast Included" : amenity}
+                  </Badge>
+                );
+              });
+            })()}
           </div>
         )}
 
@@ -322,7 +338,7 @@ function HotelCard({
         {/* Hotel name overlay on image */}
         <div className="absolute bottom-3 left-3 right-3">
           <h4 className="font-bold text-white text-base drop-shadow-lg line-clamp-1">{hotel.name}</h4>
-          {hotel.address && (
+          {hotel?.address && (
             <div className="flex items-center gap-1.5 text-white/80 text-xs mt-0.5">
               <MapPin className="h-3 w-3 flex-shrink-0" />
               <span className="line-clamp-1 drop-shadow">{hotel.address}</span>
@@ -336,15 +352,31 @@ function HotelCard({
         {/* Amenities Preview */}
         {hotel.amenities && hotel.amenities.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {hotel.amenities.slice(0, 4).map((amenity, idx) => {
-              const Icon = getAmenityIcon(amenity);
-              return (
-                <Badge key={idx} variant="outline" className="gap-1.5 text-[10px] py-1 px-2.5 rounded-full border-border/60">
-                  <Icon className="h-3 w-3 text-primary/70" />
-                  {amenity}
-                </Badge>
-              );
-            })}
+            {(() => {
+              const list = [...hotel.amenities];
+              const bbIdx = list.findIndex(a => a.toLowerCase().includes("breakfast") || a.toLowerCase().includes("buffet") || a.toLowerCase() === "bb");
+              if (bbIdx > -1) {
+                const item = list.splice(bbIdx, 1)[0];
+                list.unshift(item);
+              }
+              return list.slice(0, 4).map((amenity, idx) => {
+                const Icon = getAmenityIcon(amenity);
+                const isBB = amenity.toLowerCase().includes("breakfast") || amenity.toLowerCase().includes("buffet") || amenity.toLowerCase() === "bb";
+                return (
+                  <Badge 
+                    key={idx} 
+                    variant="outline" 
+                    className={cn(
+                      "gap-1.5 text-[10px] py-1 px-2.5 rounded-full border-border/60",
+                      isBB ? "bg-amber-500/10 text-amber-600 border-amber-500/20 font-bold" : ""
+                    )}
+                  >
+                    <Icon className={cn("h-3 w-3", isBB ? "text-amber-600" : "text-primary/70")} />
+                    {isBB ? "BB Included" : amenity}
+                  </Badge>
+                );
+              });
+            })()}
             {hotel.amenities.length > 4 && (
               <Badge variant="secondary" className="text-[10px] py-1 px-2.5 rounded-full">
                 +{hotel.amenities.length - 4} more
@@ -358,9 +390,17 @@ function HotelCard({
           {lowestPrice > 0 && (
             <div>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">from</span>
-              <div className="flex items-baseline gap-1">
-                <span className="text-xl font-extrabold text-primary">${lowestPrice}</span>
-                <span className="text-xs text-muted-foreground">/night</span>
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-extrabold text-primary">${lowestPrice}</span>
+                  <span className="text-xs text-muted-foreground">/night</span>
+                </div>
+                {hotel.amenities?.some(a => a.toLowerCase().includes("breakfast") || a.toLowerCase().includes("buffet") || a.toLowerCase() === "bb") && (
+                  <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[9px] font-black tracking-tight px-1.5 h-5 flex items-center gap-1 shadow-sm ring-1 ring-amber-500/20">
+                    <Coffee className="h-2.5 w-2.5" />
+                    BB
+                  </Badge>
+                )}
               </div>
               {nights > 1 && (
                 <span className="text-[10px] text-muted-foreground">

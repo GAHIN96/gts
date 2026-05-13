@@ -9,7 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy": "npm run build && npx netlify deploy --prod --dir=dist",
+    "deploy": "npm run build",
     "deploy:ftp": "npm run build && node scripts/deploy-ftp.js",
     "deploy:netlify": "npm run build && npx netlify deploy --prod --dir=dist"
   },

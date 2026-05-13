@@ -1313,12 +1313,7 @@ const Reports = () => {
                               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{event.passengers} Passengers</span>
                             </div>
                           )}
-                          {event.type === "departure" && event.availableSeats !== undefined && (
-                            <div className="flex items-center gap-3">
-                              <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                              <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">{event.availableSeats} Seats Available</span>
-                            </div>
-                          )}
+                          {/* Removed available seats as requested */}
                         </div>
                       </div>
                     ))

@@ -3,7 +3,7 @@ import { useSidebarOffset } from "@/hooks/useSidebarOffset";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Upload, X, Plus, Trash2, Plane, DollarSign, Calendar, RotateCcw, Copy } from "lucide-react";
+import { Loader2, Upload, X, Plus, Trash2, Plane, DollarSign, Calendar, RotateCcw, Copy, ListPlus } from "lucide-react";
 import { SectionJumpNav } from "@/components/admin/SectionJumpNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,6 +43,7 @@ import { useCities } from "@/hooks/useCities";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { FlightPriceTiersEditor } from "./FlightPriceTiersEditor";
+import { useAirports } from "@/hooks/useAirports";
 
 type DefaultFareRow = { person_type: string; seat_from: number; seat_to: number; rate: number; commission: number };
 type SpecialFareRow = { from_date: string; to_date: string; person_type: string; seat_from: number; seat_to: number; rate: number; commission: number };
@@ -96,6 +99,7 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { airlines } = useAirlines();
   const { data: cities = [] } = useCities();
+  const { airports = [] } = useAirports();
 
   // Fares state
   const { data: savedDefaultFares } = useFlightDefaultFares(flight?.id || null);
@@ -183,42 +187,146 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
 
   useEffect(() => {
     if (savedDefaultFares && savedDefaultFares.length > 0) {
-      setDefaultFares(savedDefaultFares.map(f => ({ person_type: f.person_type, seat_from: f.seat_from, seat_to: f.seat_to, rate: f.rate, commission: f.commission })));
+      const sorted = [...savedDefaultFares]
+        .sort((a, b) => b.seat_from - a.seat_from)
+        .map(f => ({ person_type: f.person_type, seat_from: f.seat_from, seat_to: f.seat_to, rate: f.rate, commission: f.commission }));
+      setDefaultFares(sorted);
     } else { setDefaultFares([]); }
     setFaresDirty(false);
   }, [savedDefaultFares]);
   useEffect(() => {
     if (savedSpecialFares && savedSpecialFares.length > 0) {
-      setSpecialFares(savedSpecialFares.map(f => ({ from_date: f.from_date, to_date: f.to_date, person_type: f.person_type, seat_from: f.seat_from, seat_to: f.seat_to, rate: f.rate, commission: f.commission })));
+      const sorted = [...savedSpecialFares]
+        .sort((a, b) => {
+          const dateA = a.from_date || "";
+          const dateB = b.from_date || "";
+          if (dateA !== dateB) return dateA.localeCompare(dateB);
+          return (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0);
+        })
+        .map(f => ({ from_date: f.from_date || "", to_date: f.to_date || "", person_type: f.person_type || "", seat_from: Number(f.seat_from) || 0, seat_to: Number(f.seat_to) || 0, rate: Number(f.rate) || 0, commission: Number(f.commission) || 0 }));
+      setSpecialFares(sorted);
     } else { setSpecialFares([]); }
     setSpecialDirty(false);
   }, [savedSpecialFares]);
   const addDefaultFare = () => { setDefaultFares(p => {
+    let next;
     if (p.length === 0) {
-      return [
-        { person_type: "Adult", seat_from: 1, seat_to: 20, rate: 0, commission: 0 },
-        { person_type: "Child", seat_from: 1, seat_to: 20, rate: 0, commission: 0 },
-        { person_type: "Infant", seat_from: 1, seat_to: 20, rate: 0, commission: 0 },
+      next = [
+        { person_type: "Adult", seat_from: 20, seat_to: 1, rate: 0, commission: 0 },
+        { person_type: "Child", seat_from: 20, seat_to: 1, rate: 0, commission: 0 },
+        { person_type: "Infant", seat_from: 20, seat_to: 1, rate: 0, commission: 0 },
       ];
+    } else {
+      next = [...p, { person_type: "", seat_from: 20, seat_to: 1, rate: 0, commission: 0 }];
     }
-    return [...p, { person_type: "", seat_from: 1, seat_to: 20, rate: 0, commission: 0 }];
+    return next.sort((a, b) => (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0));
   }); setFaresDirty(true); };
-  const updateDefaultFare = (i: number, field: string, value: any) => { setDefaultFares(p => p.map((r, idx) => idx === i ? { ...r, [field]: value } : r)); setFaresDirty(true); };
+
+  const addAllTypesDefault = () => { setDefaultFares(p => {
+    const maxFrom = p.length > 0 ? Math.max(...p.map(f => f.seat_from)) : 20;
+    const lastGroup = p.filter(f => f.seat_from === maxFrom);
+    const seat_from = lastGroup.length > 0 ? lastGroup[0].seat_from : 20;
+    const seat_to = lastGroup.length > 0 ? lastGroup[0].seat_to : 1;
+    const next = [
+      ...p,
+      { person_type: "Adult", seat_from, seat_to, rate: 0, commission: 0 },
+      { person_type: "Child", seat_from, seat_to, rate: 0, commission: 0 },
+      { person_type: "Infant", seat_from, seat_to, rate: 0, commission: 0 },
+    ];
+    return next.sort((a, b) => (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0));
+  }); setFaresDirty(true); };
+
+  const copyFromSpecialToDefault = () => {
+    if (specialFares.length === 0) { toast.error("No special fares to copy"); return; }
+    const next = [...defaultFares, ...specialFares.map(f => ({ person_type: f.person_type, seat_from: f.seat_from, seat_to: f.seat_to, rate: f.rate, commission: f.commission }))];
+    setDefaultFares(next.sort((a, b) => (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0)));
+    setFaresDirty(true);
+    toast.success("Copied from Special Fares");
+  };
+
+  const updateDefaultFare = (i: number, field: string, value: any) => { 
+    setDefaultFares(p => {
+      const updated = p.map((r, idx) => idx === i ? { ...r, [field]: value } : r);
+      // Sort if seat_from was changed
+      if (field === "seat_from") {
+        return [...updated].sort((a, b) => (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0));
+      }
+      return updated;
+    }); 
+    setFaresDirty(true); 
+  };
   const removeDefaultFare = (i: number) => { setDefaultFares(p => p.filter((_, idx) => idx !== i)); setFaresDirty(true); };
-  const duplicateDefaultFare = (i: number) => { setDefaultFares(p => { const src = p[i]; const range = src.seat_to - src.seat_from + 1; const maxTo = Math.max(...p.map(f => f.seat_to)); return [...p, { ...src, seat_from: maxTo + 1, seat_to: maxTo + range }]; }); setFaresDirty(true); };
+  
   const addSpecialFare = () => { setSpecialFares(p => {
+    let next;
     if (p.length === 0) {
-      return [
-        { from_date: "", to_date: "", person_type: "Adult", seat_from: 1, seat_to: 20, rate: 0, commission: 0 },
-        { from_date: "", to_date: "", person_type: "Child", seat_from: 1, seat_to: 20, rate: 0, commission: 0 },
-        { from_date: "", to_date: "", person_type: "Infant", seat_from: 1, seat_to: 20, rate: 0, commission: 0 },
+      next = [
+        { from_date: "", to_date: "", person_type: "Adult", seat_from: 20, seat_to: 1, rate: 0, commission: 0 },
+        { from_date: "", to_date: "", person_type: "Child", seat_from: 20, seat_to: 1, rate: 0, commission: 0 },
+        { from_date: "", to_date: "", person_type: "Infant", seat_from: 20, seat_to: 1, rate: 0, commission: 0 },
       ];
+    } else {
+      const maxFrom = Math.max(...p.map(f => f.seat_from));
+      next = [...p, { from_date: p[0].from_date, to_date: p[0].to_date, person_type: "", seat_from: maxFrom, seat_to: 1, rate: 0, commission: 0 }];
     }
-    return [...p, { from_date: "", to_date: "", person_type: "", seat_from: 1, seat_to: 20, rate: 0, commission: 0 }];
+    return next.sort((a, b) => {
+      const dateA = a.from_date || "";
+      const dateB = b.from_date || "";
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0);
+    });
   }); setSpecialDirty(true); };
-  const updateSpecialFare = (i: number, field: string, value: any) => { setSpecialFares(p => p.map((r, idx) => idx === i ? { ...r, [field]: value } : r)); setSpecialDirty(true); };
+
+  const addAllTypesSpecial = () => { setSpecialFares(p => {
+    const maxFrom = p.length > 0 ? Math.max(...p.map(f => f.seat_from)) : 20;
+    const lastGroup = p.filter(f => f.seat_from === maxFrom);
+    const seat_from = lastGroup.length > 0 ? lastGroup[0].seat_from : 20;
+    const seat_to = lastGroup.length > 0 ? lastGroup[0].seat_to : 1;
+    const from_date = lastGroup.length > 0 ? lastGroup[0].from_date : "";
+    const to_date = lastGroup.length > 0 ? lastGroup[0].to_date : "";
+    const next = [
+      ...p,
+      { from_date, to_date, person_type: "Adult", seat_from, seat_to, rate: 0, commission: 0 },
+      { from_date, to_date, person_type: "Child", seat_from, seat_to, rate: 0, commission: 0 },
+      { from_date, to_date, person_type: "Infant", seat_from, seat_to, rate: 0, commission: 0 },
+    ];
+    return next.sort((a, b) => {
+      const dateA = a.from_date || "";
+      const dateB = b.from_date || "";
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0);
+    });
+  }); setSpecialDirty(true); };
+
+  const copyFromDefaultToSpecial = () => {
+    if (defaultFares.length === 0) { toast.error("No default fares to copy"); return; }
+    const next = [...specialFares, ...defaultFares.map(f => ({ from_date: "", to_date: "", person_type: f.person_type, seat_from: f.seat_from, seat_to: f.seat_to, rate: f.rate, commission: f.commission }))];
+    setSpecialFares(next.sort((a, b) => {
+      const dateA = a.from_date || "";
+      const dateB = b.from_date || "";
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0);
+    }));
+    setSpecialDirty(true);
+    toast.success("Copied from Default Fares");
+  };
+
+  const updateSpecialFare = (i: number, field: string, value: any) => { 
+    setSpecialFares(p => {
+      const updated = p.map((r, idx) => idx === i ? { ...r, [field]: value } : r);
+      if (field === "seat_from" || field === "from_date") {
+        return [...updated].sort((a, b) => {
+          const dateA = a.from_date || "";
+          const dateB = b.from_date || "";
+          if (dateA !== dateB) return dateA.localeCompare(dateB);
+          return (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0);
+        });
+      }
+      return updated;
+    }); 
+    setSpecialDirty(true); 
+  };
   const removeSpecialFare = (i: number) => { setSpecialFares(p => p.filter((_, idx) => idx !== i)); setSpecialDirty(true); };
-  const duplicateSpecialFare = (i: number) => { setSpecialFares(p => { const src = p[i]; const range = src.seat_to - src.seat_from + 1; const maxTo = Math.max(...p.map(f => f.seat_to)); return [...p, { ...src, seat_from: maxTo + 1, seat_to: maxTo + range }]; }); setSpecialDirty(true); };
   const handleSaveDefaultFares = async () => {
     if (!flight?.id) return;
     try { await saveDefaultFares.mutateAsync({ flightId: flight.id, fares: defaultFares }); setFaresDirty(false); toast.success("Default fares saved"); } catch { toast.error("Failed to save"); }
@@ -357,6 +465,43 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
         const newFlight = await createFlight.mutateAsync(flightData);
         const newId = (newFlight as any)?.id;
 
+        if (newId && data.trip_type === "round_trip") {
+          const returnFlightData: any = {
+            airline: data.airline,
+            flight_number: dep?.ret_flight_number || null,
+            description: data.description || null,
+            departure_city: data.arrival_city,
+            arrival_city: data.departure_city,
+            departure_airport_code: data.arrival_airport_code || null,
+            arrival_airport_code: data.departure_airport_code || null,
+            departure_date: arrivalDate,
+            arrival_date: departureDate,
+            departure_time: dep?.ret_dep_time || null,
+            arrival_time: dep?.ret_arr_time || null,
+            price: data.price,
+            available_seats: dep?.available_seats ?? data.available_seats,
+            total_seats: dep?.total_seats ?? data.total_seats,
+            class: data.class,
+            is_active: dep?.is_active ?? data.is_active,
+            airline_logo: flightData.airline_logo,
+            trip_type: data.trip_type,
+            cover_photo_url: coverPhoto,
+            passport_required: data.passport_required,
+            photo_required: data.photo_required,
+            id_scan_required: data.id_scan_required,
+            id_backside_required: data.id_backside_required,
+            visa_amount: data.visa_amount,
+            currency: data.currency,
+            is_featured: data.is_featured,
+            flight_policy: data.flight_policy || null,
+            ops_email: data.ops_email || null,
+            order_number: data.order_number || null,
+            linked_flight_id: newId,
+          };
+
+          await createFlight.mutateAsync(returnFlightData);
+        }
+
         if (newId) {
           if (defaultFares.length > 0) {
             await saveDefaultFares.mutateAsync({ flightId: newId, fares: defaultFares });
@@ -446,19 +591,57 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <Label className="text-[11px] uppercase text-muted-foreground font-semibold tracking-wide">From</Label>
-                  <Select value={form.watch("departure_city")} onValueChange={v => form.setValue("departure_city", v)}>
+                  <Select 
+                    value={form.watch("departure_airport_code") || form.watch("departure_city")} 
+                    onValueChange={v => {
+                      const airport = airports.find(a => a.code === v);
+                      if (airport) {
+                        form.setValue("departure_airport_code", airport.code, { shouldDirty: true });
+                        form.setValue("departure_city", airport.cities?.name || airport.name, { shouldDirty: true });
+                      } else {
+                        form.setValue("departure_city", v, { shouldDirty: true });
+                        form.setValue("departure_airport_code", "", { shouldDirty: true });
+                      }
+                    }}
+                  >
                     <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent>
-                      {cities.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                      {airports.map(a => (
+                        <SelectItem key={`airport-${a.id}`} value={a.code}>
+                          {a.cities?.name || a.name} - {a.name} ({a.code})
+                        </SelectItem>
+                      ))}
+                      {form.watch("departure_city") && !form.watch("departure_airport_code") && !airports.some(a => a.code === form.watch("departure_city")) && (
+                        <SelectItem value={form.watch("departure_city")}>{form.watch("departure_city")}</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[11px] uppercase text-muted-foreground font-semibold tracking-wide">To</Label>
-                  <Select value={form.watch("arrival_city")} onValueChange={v => form.setValue("arrival_city", v)}>
+                  <Select 
+                    value={form.watch("arrival_airport_code") || form.watch("arrival_city")} 
+                    onValueChange={v => {
+                      const airport = airports.find(a => a.code === v);
+                      if (airport) {
+                        form.setValue("arrival_airport_code", airport.code, { shouldDirty: true });
+                        form.setValue("arrival_city", airport.cities?.name || airport.name, { shouldDirty: true });
+                      } else {
+                        form.setValue("arrival_city", v, { shouldDirty: true });
+                        form.setValue("arrival_airport_code", "", { shouldDirty: true });
+                      }
+                    }}
+                  >
                     <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent>
-                      {cities.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                      {airports.map(a => (
+                        <SelectItem key={`airport-${a.id}`} value={a.code}>
+                          {a.cities?.name || a.name} - {a.name} ({a.code})
+                        </SelectItem>
+                      ))}
+                      {form.watch("arrival_city") && !form.watch("arrival_airport_code") && !airports.some(a => a.code === form.watch("arrival_city")) && (
+                        <SelectItem value={form.watch("arrival_city")}>{form.watch("arrival_city")}</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -469,7 +652,6 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
                     <SelectContent>
                       <SelectItem value="one_way">One Way</SelectItem>
                       <SelectItem value="round_trip">Round Trip</SelectItem>
-                      <SelectItem value="multi_city">Multi City</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -680,12 +862,33 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
                     </Button>
                   </div>
                 ))}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={addDefaultFare} className="gap-1">
                     <Plus className="h-3.5 w-3.5" /> Add
                   </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={addAllTypesDefault} className="gap-1">
+                    <ListPlus className="h-3.5 w-3.5" /> Add All Types
+                  </Button>
+                  <Select onValueChange={(v) => { if (v === "special") copyFromSpecialToDefault(); }}>
+                    <SelectTrigger className="h-8 w-auto text-xs gap-1">
+                      <Copy className="h-3.5 w-3.5" />
+                      <SelectValue placeholder="Copy from..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="special" className="text-xs">Special Fares</SelectItem>
+                    </SelectContent>
+                  </Select>
                   {defaultFares.length > 0 && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => { setDefaultFares(p => { const maxTo = Math.max(...p.map(f => f.seat_to)); const lastGroup = p.filter(f => f.seat_to === maxTo); const range = lastGroup[0].seat_to - lastGroup[0].seat_from + 1; return [...p, ...lastGroup.map(f => ({ ...f, seat_from: maxTo + 1, seat_to: maxTo + range }))]; }); setFaresDirty(true); }} className="gap-1">
+                    <Button type="button" variant="outline" size="sm" onClick={() => { 
+                      setDefaultFares(p => { 
+                        const maxFrom = Math.max(...p.map(f => f.seat_from)); 
+                        const lastGroup = p.filter(f => f.seat_from === maxFrom); 
+                        const range = lastGroup[0].seat_from - lastGroup[0].seat_to + 1; 
+                        const next = [...p, ...lastGroup.map(f => ({ ...f, seat_from: maxFrom + range, seat_to: maxFrom + 1 }))];
+                        return next.sort((a, b) => b.seat_from - a.seat_from);
+                      }); 
+                      setFaresDirty(true); 
+                    }} className="gap-1">
                       <Copy className="h-3.5 w-3.5" /> Duplicate All
                     </Button>
                   )}
@@ -726,12 +929,36 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
                     </Button>
                   </div>
                 ))}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={addSpecialFare} className="gap-1">
                     <Plus className="h-3.5 w-3.5" /> Add
                   </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={addAllTypesSpecial} className="gap-1">
+                    <ListPlus className="h-3.5 w-3.5" /> Add All Types
+                  </Button>
+                  <Select onValueChange={(v) => { if (v === "default") copyFromDefaultToSpecial(); }}>
+                    <SelectTrigger className="h-8 w-auto text-xs gap-1">
+                      <Copy className="h-3.5 w-3.5" />
+                      <SelectValue placeholder="Copy from..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default" className="text-xs">Default Fares</SelectItem>
+                    </SelectContent>
+                  </Select>
                   {specialFares.length > 0 && (
-                    <Button type="button" variant="outline" size="sm" onClick={() => { setSpecialFares(p => { const maxTo = Math.max(...p.map(f => f.seat_to)); const lastGroup = p.filter(f => f.seat_to === maxTo); const range = lastGroup[0].seat_to - lastGroup[0].seat_from + 1; return [...p, ...lastGroup.map(f => ({ ...f, seat_from: maxTo + 1, seat_to: maxTo + range }))]; }); setSpecialDirty(true); }} className="gap-1">
+                    <Button type="button" variant="outline" size="sm" onClick={() => { 
+                      setSpecialFares(p => { 
+                        const maxFrom = Math.max(...p.map(f => f.seat_from)); 
+                        const lastGroup = p.filter(f => f.seat_from === maxFrom); 
+                        const range = lastGroup[0].seat_from - lastGroup[0].seat_to + 1; 
+                        const next = [...p, ...lastGroup.map(f => ({ ...f, seat_from: maxFrom + range, seat_to: maxFrom + 1 }))];
+                        return next.sort((a, b) => {
+                          if (a.from_date !== b.from_date) return a.from_date.localeCompare(b.from_date);
+                          return b.seat_from - a.seat_from;
+                        });
+                      }); 
+                      setSpecialDirty(true); 
+                    }} className="gap-1">
                       <Copy className="h-3.5 w-3.5" /> Duplicate All
                     </Button>
                   )}

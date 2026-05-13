@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-login-success",
 };
 
 const MAX_ATTEMPTS = 5;
@@ -135,7 +135,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      const success = req.headers.get("x-login-success") === "true";
+      const { success: bodySuccess } = await req.clone().json().catch(() => ({}));
+      const success = bodySuccess !== undefined ? bodySuccess : req.headers.get("x-login-success") === "true";
 
       // For successful login recording, require a valid JWT to prevent spoofing
       if (success) {

@@ -40,6 +40,12 @@ import {
   Info,
   Star,
   Sparkles,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Armchair,
+  ShieldCheck,
 } from "lucide-react";
 import { InlineFareCalendar } from "@/components/search/InlineFareCalendar";
 import { Button } from "@/components/ui/button";
@@ -831,12 +837,14 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
   // Compute price maps for departure calendar
   const departurePrices = useMemo(() => {
     const prices: Record<string, number> = {};
-    if (!flights) return prices;
+    if (!flights || !fromCity || !toCity) return prices;
 
     const relevantFlights = flights.filter(f => {
       if (!f.is_active) return false;
-      if (fromCity && !f.departure_city.toLowerCase().includes(fromCity.toLowerCase())) return false;
-      if (toCity && !f.arrival_city.toLowerCase().includes(toCity.toLowerCase())) return false;
+      const from = fromCity.toLowerCase().trim();
+      const to = toCity.toLowerCase().trim();
+      if (from && !f.departure_city.toLowerCase().includes(from) && (!f.departure_airport_code || !f.departure_airport_code.toLowerCase().includes(from))) return false;
+      if (to && !f.arrival_city.toLowerCase().includes(to) && (!f.arrival_airport_code || !f.arrival_airport_code.toLowerCase().includes(to))) return false;
       // For one-way only, filter out round-trip-only flights; for round-trip, show all
       if (tripType === "oneway" && f.trip_type === "round_trip") return false;
       return true;
@@ -857,12 +865,14 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
   // Compute price maps for return calendar
   const returnPrices = useMemo(() => {
     const prices: Record<string, number> = {};
-    if (!flights || tripType !== "roundtrip") return prices;
+    if (!flights || tripType !== "roundtrip" || !fromCity || !toCity) return prices;
 
     const relevantFlights = flights.filter(f => {
       if (!f.is_active) return false;
-      if (toCity && !f.departure_city.toLowerCase().includes(toCity.toLowerCase())) return false;
-      if (fromCity && !f.arrival_city.toLowerCase().includes(fromCity.toLowerCase())) return false;
+      const from = fromCity.toLowerCase().trim();
+      const to = toCity.toLowerCase().trim();
+      if (to && !f.departure_city.toLowerCase().includes(to) && (!f.departure_airport_code || !f.departure_airport_code.toLowerCase().includes(to))) return false;
+      if (from && !f.arrival_city.toLowerCase().includes(from) && (!f.arrival_airport_code || !f.arrival_airport_code.toLowerCase().includes(from))) return false;
       return true;
     });
 
@@ -932,15 +942,16 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     const limited: Date[] = [];
     const soldOut: Date[] = [];
 
-    if (!flights) return { available, limited, soldOut };
+    if (!flights || !fromCity || !toCity) return { available, limited, soldOut };
 
     const relevantFlights = flights.filter(f => {
       if (!f.is_active) return false;
-      if (fromCity && !f.departure_city.toLowerCase().includes(fromCity.toLowerCase())) return false;
-      if (toCity && !f.arrival_city.toLowerCase().includes(toCity.toLowerCase())) return false;
-      // For one-way mode, exclude round_trip-only flights
-      if (tripType === "oneway" && (f.trip_type === "round_trip" || f.trip_type === "roundtrip")) return false;
-      // For round-trip mode, include ALL flight types (one-way + round-trip) to allow cross-airline combinations
+      const from = fromCity.toLowerCase().trim();
+      const to = toCity.toLowerCase().trim();
+      if (from && !f.departure_city.toLowerCase().includes(from) && (!f.departure_airport_code || !f.departure_airport_code.toLowerCase().includes(from))) return false;
+      if (to && !f.arrival_city.toLowerCase().includes(to) && (!f.arrival_airport_code || !f.arrival_airport_code.toLowerCase().includes(to))) return false;
+      // For one-way mode, include all relevant flights regardless of trip_type
+      // Users can book the outbound leg of a round-trip or a dedicated one-way flight.
       return true;
     });
 
@@ -970,12 +981,14 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
     const limited: Date[] = [];
     const soldOut: Date[] = [];
 
-    if (!flights || tripType !== "roundtrip") return { available, limited, soldOut };
+    if (!flights || tripType !== "roundtrip" || !fromCity || !toCity) return { available, limited, soldOut };
 
     const relevantFlights = flights.filter(f => {
       if (!f.is_active) return false;
-      if (toCity && !f.departure_city.toLowerCase().includes(toCity.toLowerCase())) return false;
-      if (fromCity && !f.arrival_city.toLowerCase().includes(fromCity.toLowerCase())) return false;
+      const from = fromCity.toLowerCase().trim();
+      const to = toCity.toLowerCase().trim();
+      if (to && !f.departure_city.toLowerCase().includes(to) && (!f.departure_airport_code || !f.departure_airport_code.toLowerCase().includes(to))) return false;
+      if (from && !f.arrival_city.toLowerCase().includes(from) && (!f.arrival_airport_code || !f.arrival_airport_code.toLowerCase().includes(from))) return false;
       return true;
     });
 
@@ -1146,20 +1159,27 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
 
     // For round-trip: find outbound flights (from→to on departure date), any trip_type is OK
     // For one-way: only show one-way flights
+    // We don't strictly filter out round_trip flights from one-way searches anymore
+    // as the user might want to see all available inventory for that route.
+    // We show all relevant flights for the route and date. 
+    // The "Round Trip" badge will distinguish them in the results.
     if (tripType === "oneway") {
-      results = results.filter(f => f.trip_type === "one_way" || f.trip_type === "oneway" || !f.trip_type);
+      // No strict filtering by trip_type anymore
     }
-    // For roundtrip, don't filter by trip_type — we search outbound leg independently
     
     if (fromCity) {
+      const from = fromCity.toLowerCase().trim();
       results = results.filter(f => 
-        f.departure_city.toLowerCase().includes(fromCity.toLowerCase())
+        f.departure_city.toLowerCase().includes(from) || 
+        (f.departure_airport_code && f.departure_airport_code.toLowerCase().includes(from))
       );
     }
     
     if (toCity) {
+      const to = toCity.toLowerCase().trim();
       results = results.filter(f => 
-        f.arrival_city.toLowerCase().includes(toCity.toLowerCase())
+        f.arrival_city.toLowerCase().includes(to) || 
+        (f.arrival_airport_code && f.arrival_airport_code.toLowerCase().includes(to))
       );
     }
     
@@ -1182,13 +1202,17 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
       
       // Return flights: reverse route (to → from)
       if (toCity) {
+        const to = toCity.toLowerCase().trim();
         returnResults = returnResults.filter(f => 
-          f.departure_city.toLowerCase().includes(toCity.toLowerCase())
+          f.departure_city.toLowerCase().includes(to) || 
+          (f.departure_airport_code && f.departure_airport_code.toLowerCase().includes(to))
         );
       }
       if (fromCity) {
+        const from = fromCity.toLowerCase().trim();
         returnResults = returnResults.filter(f => 
-          f.arrival_city.toLowerCase().includes(fromCity.toLowerCase())
+          f.arrival_city.toLowerCase().includes(from) || 
+          (f.arrival_airport_code && f.arrival_airport_code.toLowerCase().includes(from))
         );
       }
       
@@ -1428,6 +1452,11 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
               <div className="flex items-center gap-2 mb-4 flex-wrap">
                 <span className="text-xs text-muted-foreground font-sans font-medium bg-muted/50 px-2 py-0.5 rounded-md">{flight.flight_number || "—"}</span>
                 {flight.class && <Badge className="text-[10px] capitalize font-semibold h-5 bg-secondary text-secondary-foreground border-none">{flight.class}</Badge>}
+                {(flight.trip_type === 'round_trip' || flight.trip_type === 'roundtrip') && (
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px] h-5 font-bold">
+                    <ArrowLeftRight className="h-2.5 w-2.5 mr-1" /> Round Trip
+                  </Badge>
+                )}
                 {seatsLeft > 0 && seatsLeft < 5 && (
                   <Badge className="bg-destructive/10 text-destructive text-[10px] border-destructive/20 font-bold h-5 gap-1 animate-pulse">
                     <AlertTriangle className="h-2.5 w-2.5" /> Only {seatsLeft} left!
@@ -1505,39 +1534,158 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
         </div>
 
         {expandedFlightId === flight.id && (
-          <div className="border-t border-border/15 bg-gradient-to-b from-muted/40 via-muted/20 to-transparent px-6 py-5 space-y-5">
+          <div className="border-t border-border/15 bg-gradient-to-b from-muted/40 via-muted/10 to-transparent px-6 py-6 space-y-8 animate-in fade-in slide-in-from-top-2 duration-300">
+            {/* Header / Route Status */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-sm" />
-                <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-primary">Flight Information</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-primary/10">
-                <Plane className="h-4 w-4 text-primary" />
-              </div>
-              <span className="text-xs font-semibold text-foreground">{flight.airline}</span>
-              <span className="text-[11px] font-sans font-medium text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md border border-border/30">{flight.flight_number || "TBD"}</span>
-            </div>
-            <div className="flex items-start gap-4 pl-1">
-              <div className="flex flex-col items-center pt-1">
-                <div className="w-3.5 h-3.5 rounded-full border-[2.5px] border-primary bg-background shadow-sm" />
-                <div className="w-[2px] flex-1 min-h-[40px] bg-primary/20 rounded-full" />
-                <div className="w-3.5 h-3.5 rounded-full border-[2.5px] border-primary bg-primary shadow-sm" />
-              </div>
-              <div className="flex-1 space-y-4">
-                <div className="flex items-baseline gap-3">
-                  <p className="text-base font-extrabold text-foreground tracking-tight">{formatTime(flight.departure_time)}</p>
-                  <p className="text-sm text-muted-foreground font-medium">{flight.departure_airport_code || flight.departure_city?.substring(0,3).toUpperCase()} <span className="ml-1.5 text-foreground/70">{flight.departure_city}</span></p>
+                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10">
+                  <Info className="h-3.5 w-3.5 text-primary" />
                 </div>
-                <div className="flex items-baseline gap-3">
-                  <p className="text-base font-extrabold text-foreground tracking-tight">{formatTime(flight.arrival_time)}</p>
-                  <p className="text-sm text-muted-foreground font-medium">{flight.arrival_airport_code || flight.arrival_city?.substring(0,3).toUpperCase()} <span className="ml-1.5 text-foreground/70">{flight.arrival_city}</span></p>
+                <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground">Complete Flight Technical Details</span>
+              </div>
+              <Badge variant="outline" className="text-[10px] font-bold border-primary/20 bg-primary/5 text-primary tracking-wide">
+                Direct Flight • {duration}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Timeline Column */}
+              <div className="lg:col-span-7 relative">
+                <div className="absolute left-[7px] top-1.5 bottom-1.5 w-[1.5px] bg-gradient-to-b from-primary via-primary/40 to-primary/20 rounded-full" />
+                
+                <div className="space-y-10 relative">
+                  {/* Departure */}
+                  <div className="flex items-start gap-4">
+                    <div className="relative z-10 w-4 h-4 rounded-full border-[3px] border-primary bg-background shadow-[0_0_10px_rgba(var(--primary),0.3)] mt-1" />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Departure</p>
+                          <p className="text-lg font-black text-foreground">{formatTime(flight.departure_time)}</p>
+                          <p className="text-sm font-semibold text-muted-foreground">
+                            {flight.departure_city} ({flight.departure_airport_code || flight.departure_city?.substring(0,3).toUpperCase()})
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-medium text-muted-foreground">{flight.departure_date ? format(new Date(flight.departure_date), "EEEE, dd MMM yyyy") : ""}</p>
+                          <p className="text-[10px] font-medium text-muted-foreground/60">{flight.airline} Terminal — TBD</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Flight Segment Icon */}
+                  <div className="flex items-center gap-4 py-2 opacity-60">
+                    <div className="w-4 flex justify-center">
+                      <Plane className="h-3 w-3 text-muted-foreground rotate-90" />
+                    </div>
+                    <div className="flex-1 flex items-center gap-2">
+                      <div className="h-px flex-1 bg-border/40 border-dashed border-t" />
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                        <Clock className="h-2.5 w-2.5" /> {duration}
+                      </span>
+                      <div className="h-px flex-1 bg-border/40 border-dashed border-t" />
+                    </div>
+                  </div>
+
+                  {/* Arrival */}
+                  <div className="flex items-start gap-4">
+                    <div className="relative z-10 w-4 h-4 rounded-full bg-primary shadow-[0_0_12px_rgba(var(--primary),0.5)] mt-1" />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Arrival</p>
+                          <p className="text-lg font-black text-foreground">{formatTime(flight.arrival_time)}</p>
+                          <p className="text-sm font-semibold text-muted-foreground">
+                            {flight.arrival_city} ({flight.arrival_airport_code || flight.arrival_city?.substring(0,3).toUpperCase()})
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-medium text-muted-foreground">{flight.arrival_date ? format(new Date(flight.arrival_date), "EEEE, dd MMM yyyy") : ""}</p>
+                          <p className="text-[10px] font-medium text-muted-foreground/60">{flight.airline} Terminal — TBD</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-4 pt-3 border-t border-border/15 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1.5 bg-muted/40 px-2.5 py-1 rounded-md"><Clock className="h-3 w-3" /> All times are local</span>
+
+              {/* Technical Details Column */}
+              <div className="lg:col-span-5 space-y-6">
+                <div className="bg-muted/40 rounded-2xl p-5 border border-border/15 space-y-5">
+                  <div className="flex items-center gap-3 pb-4 border-b border-border/20">
+                    {(() => {
+                      const logo = getAirlineLogo(flight.airline, flight.airline_logo);
+                      return logo ? (
+                        <img src={logo} alt={flight.airline} className="h-10 w-10 object-contain bg-background p-1.5 rounded-lg border border-border/20" />
+                      ) : (
+                        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Plane className="h-5 w-5 text-primary" />
+                        </div>
+                      );
+                    })()}
+                    <div>
+                      <p className="text-xs font-bold text-foreground">{flight.airline}</p>
+                      <p className="text-[10px] font-medium text-muted-foreground tracking-tight">Flight {flight.flight_number || "IA101"}</p>
+                    </div>
+                  </div>
+
+                  {/* Spec Grid */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+                    <div className="space-y-1.5">
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Baggage Allowance</p>
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-md bg-background border border-border/20">
+                          <Luggage className="h-3.5 w-3.5 text-primary/80" />
+                        </div>
+                        <span className="text-xs font-bold text-foreground">{baggage}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Cabin Class</p>
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-md bg-background border border-border/20">
+                          <Armchair className="h-3.5 w-3.5 text-primary/80" />
+                        </div>
+                        <span className="text-xs font-bold text-foreground capitalize">{flight.class || "Economy"}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Booking Policy</p>
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-md bg-background border border-border/20">
+                          <ShieldCheck className="h-3.5 w-3.5 text-primary/80" />
+                        </div>
+                        <span className="text-xs font-bold text-foreground">Standard Policy</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Live Availability</p>
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-md bg-background border border-border/20">
+                          <Users className="h-3.5 w-3.5 text-primary/80" />
+                        </div>
+                        <span className="text-xs font-bold text-foreground">{seatsLeft} Seats Left</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Operational Notes */}
+                  {flight.flight_policy && (
+                    <div className="pt-4 border-t border-border/20">
+                      <div className="bg-background/50 rounded-lg p-3 border border-border/10">
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Operational Policy</p>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground/80">{flight.flight_policy}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 px-1 text-[10px] text-muted-foreground/60 font-medium italic">
+                  <Clock className="h-3 w-3" />
+                  Prices and availability are real-time and subject to change until ticketing.
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1843,10 +1991,24 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                   const info = cityInfoMap[city];
                                   return (
                                     <CommandItem key={city} onSelect={() => {
-                                      setFromCity(city); setFromOpen(false);
-                                      if (tripType === "roundtrip" && flights) {
-                                        const mf = flights.find(f => f.is_active && f.departure_city.toLowerCase() === city.toLowerCase());
-                                        if (mf) setToCity(mf.arrival_city);
+                                      setFromCity(city); 
+                                      setFromOpen(false);
+                                      
+                                      if (flights) {
+                                        // Calculate available destinations for this specific origin
+                                        const destinations = [...new Set(
+                                          flights
+                                            .filter(f => f.is_active && f.departure_city.toLowerCase() === city.toLowerCase())
+                                            .map(f => f.arrival_city)
+                                        )];
+                                        
+                                        // Auto-select if there's only one destination, or auto-focus the next selector
+                                        if (destinations.length === 1) {
+                                          setToCity(destinations[0]);
+                                        } else {
+                                          // Small delay to ensure the first popover closes cleanly before opening the next
+                                          setTimeout(() => setToOpen(true), 150);
+                                        }
                                       }
                                     }}>
                                       {info?.flagUrl ? <img src={info.flagUrl} alt="" className="w-4 h-3 rounded-[2px] object-cover shrink-0 mr-2" /> : <PlaneTakeoff className="h-3.5 w-3.5 mr-2 text-muted-foreground" />}
@@ -1925,7 +2087,12 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                                 {destinationCities.map((city) => {
                                   const info = cityInfoMap[city];
                                   return (
-                                    <CommandItem key={city} onSelect={() => { setToCity(city); setToOpen(false); }}>
+                                    <CommandItem key={city} onSelect={() => { 
+                                      setToCity(city); 
+                                      setToOpen(false);
+                                      // Auto-open the departure date picker for a faster flow
+                                      setTimeout(() => setDepartureDateOpen(true), 150);
+                                    }}>
                                       {info?.flagUrl ? <img src={info.flagUrl} alt="" className="w-4 h-3 rounded-[2px] object-cover shrink-0 mr-2" /> : <PlaneLanding className="h-3.5 w-3.5 mr-2 text-muted-foreground" />}
                                       <span className="truncate">{city}</span>
                                       {info?.airportCode && <span className="ml-auto text-[10px] font-sans font-medium font-bold text-muted-foreground">{info.airportCode}</span>}
@@ -1954,7 +2121,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                   "grid gap-3 items-end",
                   tripType === "roundtrip"
                     ? "grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_auto]"
-                    : "grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto]"
+                    : "grid-cols-1 md:grid-cols-[2fr_1fr_1fr_auto]"
                 )}
               >
                 <div className="space-y-1.5 relative">
@@ -1976,7 +2143,14 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                         )}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent
+                      className="w-auto p-0 z-[100]"
+                      align="center"
+                      side="bottom"
+                      sideOffset={8}
+                      avoidCollisions={true}
+                      onOpenAutoFocus={(e) => e.preventDefault()}
+                    >
                       <InlineFareCalendar selected={departureDate}
                         onSelect={(d) => {
                           setDepartureDate(d);
@@ -1991,11 +2165,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                         soldOutDates={departureAvailability.soldOut} datePrices={departurePrices} />
                     </PopoverContent>
                   </Popover>
-                  {tripType === "roundtrip" && departureDate && returnDate && returnDate > departureDate && (
-                    <div className="hidden md:flex absolute -right-3 bottom-3.5 z-10 items-center justify-center h-6 min-w-[34px] px-1.5 rounded-full bg-gradient-to-r from-primary to-blue-500 text-primary-foreground text-[10px] font-bold shadow-md ring-2 ring-background">
-                      {differenceInDays(returnDate, departureDate)}n
-                    </div>
-                  )}
+
                 </div>
 
                 {tripType === "roundtrip" && (
@@ -2018,7 +2188,14 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                           )}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent
+                      className="w-auto p-0 z-[100]"
+                      align="center"
+                      side="bottom"
+                      sideOffset={8}
+                      avoidCollisions={true}
+                      onOpenAutoFocus={(e) => e.preventDefault()}
+                    >
                         <InlineFareCalendar selected={returnDate}
                           onSelect={(d) => { setReturnDate(d); setReturnDateOpen(false); }}
                           disabled={(date) => departureDate ? startOfDay(date) <= startOfDay(departureDate) : startOfDay(date) < startOfDay(new Date())}
