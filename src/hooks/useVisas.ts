@@ -47,10 +47,10 @@ export function useCreateVisa() {
         .from("visas")
         .insert(visa)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["visas"] });
@@ -68,10 +68,10 @@ export function useUpdateVisa() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["visas"] });

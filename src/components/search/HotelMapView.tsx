@@ -277,6 +277,8 @@ export function HotelMapView({
   const [geocoding, setGeocoding] = useState(false);
   const [zoom, setZoom] = useState(6);
 
+  const roomCount = Math.max(1, roomConfigs.length);
+
   const getCityData = (hotel: HotelType) =>
     hotel.cities as HotelType["cities"] & {
       country?: string | null;
@@ -297,7 +299,6 @@ export function HotelMapView({
   const computePrice = (hotel: HotelType): number => {
     const rooms = hotel.hotel_rooms || [];
     const specials = (hotel as any).hotel_special_prices || [];
-    const roomCount = roomConfigs.length || 1;
     
     if (roomType) {
       let total = 0;

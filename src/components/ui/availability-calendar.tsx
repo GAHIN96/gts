@@ -116,6 +116,7 @@ function AvailabilityCalendar({
               const detail = dayDetails![key];
               const remaining = detail?.remaining;
               const sold = detail?.sold ?? 0;
+              const capacity = detail?.capacity ?? 0;
               const remainingColor =
                 remaining === undefined
                   ? "text-muted-foreground/60"
@@ -124,22 +125,15 @@ function AvailabilityCalendar({
                     : remaining <= 3
                       ? "bg-amber-200/70 text-amber-900 dark:bg-amber-900/40 dark:text-amber-300"
                       : "bg-green-200/70 text-green-900 dark:bg-green-900/40 dark:text-green-300";
-              const remainingIcon =
-                remaining === undefined ? "✓" : remaining === 0 ? "✕" : remaining <= 3 ? "!" : "✓";
               return (
                 <div className="flex flex-col items-center justify-start gap-1 pt-1 pb-1 leading-none w-full">
                   <span className="text-base font-semibold">{date.getDate()}</span>
                   {remaining !== undefined && (
                     <span className={cn(
-                      "px-1.5 py-0.5 rounded-full text-[10px] font-semibold leading-none",
+                      "px-1.5 py-0.5 rounded-full text-[11px] font-bold leading-none tracking-wide",
                       remainingColor
                     )}>
-                      {remainingIcon} {remaining}
-                    </span>
-                  )}
-                  {sold > 0 && (
-                    <span className="text-[9px] text-muted-foreground leading-none">
-                      ↓ {sold} sold
+                      {capacity}/{sold}
                     </span>
                   )}
                 </div>

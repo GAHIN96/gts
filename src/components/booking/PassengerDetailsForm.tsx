@@ -1,8 +1,17 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, Trash2, User, Upload, FileText, X, Minus, Loader2, CheckCircle, AlertCircle, CreditCard, Heart, Image, FileCheck, CalendarIcon, Bed, Building2 } from "lucide-react";
+import { Plus, Trash2, User, Upload, FileText, X, Minus, Loader2, CheckCircle, AlertCircle, CreditCard, Heart, Image, FileCheck, CalendarIcon, Bed, Building2, Globe } from "lucide-react";
+import { ALL_COUNTRIES } from "@/lib/countryList";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectSeparator,
+} from "@/components/ui/select";
 
 const toTitleCase = (str: string) =>
   str.replace(/\b\w/g, c => c.toUpperCase()).replace(/(?<=\b\w)\w*/g, m => m.toLowerCase()).replace(/\s+/g, ' ');
@@ -42,6 +51,7 @@ const createPassengerSchema = (requiredDocuments: DocumentRequirement[]) => {
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().min(1, "Last name is required"),
     dateOfBirth: z.string().min(1, "Date of birth is required"),
+    nationality: z.string().min(1, "Nationality is required"),
     passportNumber: z.string().optional(),
     passportExpiry: z.string().optional(),
     documents: z.array(z.object({
@@ -140,8 +150,32 @@ export function PassengerDetailsForm({
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  const countryLists = useMemo(() => {
+    const list = ALL_COUNTRIES;
+    const iraq = "Iraq";
+    const others = list.filter(c => c !== "Iraq");
+    return {
+      iraq,
+      others
+    };
+  }, []);
+
+  const normalizedRequiredDocuments = useMemo(() => {
+    return (requiredDocuments || []).map((doc: any) => {
+      if (typeof doc === "string") {
+        return {
+          id: doc,
+          name: doc.charAt(0).toUpperCase() + doc.slice(1),
+          icon: doc,
+          required: true,
+        } as DocumentRequirement;
+      }
+      return doc;
+    });
+  }, [requiredDocuments]);
+
   // Passport number is always required now
-  const formSchema = createFormSchema(requiredDocuments);
+  const formSchema = createFormSchema(normalizedRequiredDocuments);
 
   const form = useForm<PassengerFormData>({
     resolver: zodResolver(formSchema),
@@ -150,6 +184,7 @@ export function PassengerDetailsForm({
         firstName: "",
         lastName: "",
         dateOfBirth: "",
+        nationality: "",
         passportNumber: "",
         passportExpiry: "",
         documents: [],
@@ -177,14 +212,14 @@ export function PassengerDetailsForm({
           .from("profiles")
           .select("full_name, email, phone")
           .eq("id", user.id)
-          .single();
+          .maybeSingle();
 
         // Fetch agency
         const { data: agency } = await supabase
           .from("agencies")
           .select("agency_name, contact_email, contact_phone, contact_person_name")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
 
         if (profile) {
           if (profile.email && !form.getValues("contactEmail")) {
@@ -256,6 +291,7 @@ export function PassengerDetailsForm({
           firstName: "",
           lastName: "",
           dateOfBirth: "",
+          nationality: "",
           passportNumber: "",
           passportExpiry: "",
           documents: [],
@@ -280,8 +316,8 @@ export function PassengerDetailsForm({
   const calculateCompletion = () => {
     if (!watchedValues.passengers) return 0;
     
-    const requiredDocsCount = requiredDocuments.filter(d => d.required).length;
-    const baseFieldsPerPassenger = 5; // firstName, lastName, dob, passportNumber, passportExpiry
+    const requiredDocsCount = normalizedRequiredDocuments.filter(d => d.required).length;
+    const baseFieldsPerPassenger = 6; // firstName, lastName, dob, nationality, passportNumber, passportExpiry
     const totalFields = 
       (watchedValues.passengers.length * (baseFieldsPerPassenger + requiredDocsCount));
     
@@ -291,11 +327,12 @@ export function PassengerDetailsForm({
       if (passenger?.firstName) filledFields++;
       if (passenger?.lastName) filledFields++;
       if (passenger?.dateOfBirth) filledFields++;
+      if (passenger?.nationality) filledFields++;
       if (passenger?.passportNumber) filledFields++;
       if (passenger?.passportExpiry) filledFields++;
       
       // Count uploaded documents
-      requiredDocuments.filter(d => d.required).forEach(doc => {
+      normalizedRequiredDocuments.filter(d => d.required).forEach(doc => {
         const uploaded = passenger?.documents?.find((d: any) => d.documentId === doc.id);
         if (uploaded?.documentUrl) filledFields++;
       });
@@ -306,19 +343,20 @@ export function PassengerDetailsForm({
 
   const getPassengerCompletion = (index: number) => {
     const passenger = watchedValues.passengers?.[index];
-    if (!passenger) return { filled: 0, total: 5, complete: false };
+    if (!passenger) return { filled: 0, total: 6, complete: false };
     
-    const requiredDocsCount = requiredDocuments.filter(d => d.required).length;
-    const total = 5 + requiredDocsCount;
+    const requiredDocsCount = normalizedRequiredDocuments.filter(d => d.required).length;
+    const total = 6 + requiredDocsCount;
     
     let filled = 0;
     if (passenger.firstName) filled++;
     if (passenger.lastName) filled++;
     if (passenger.dateOfBirth) filled++;
+    if (passenger.nationality) filled++;
     if (passenger.passportNumber) filled++;
     if (passenger.passportExpiry) filled++;
     
-    requiredDocuments.filter(d => d.required).forEach(doc => {
+    normalizedRequiredDocuments.filter(d => d.required).forEach(doc => {
       const uploaded = passenger?.documents?.find((d: any) => d.documentId === doc.id);
       if (uploaded?.documentUrl) filled++;
     });
@@ -413,6 +451,7 @@ export function PassengerDetailsForm({
         firstName: "",
         lastName: "",
         dateOfBirth: "",
+        nationality: "",
         passportNumber: "",
         passportExpiry: "",
         documents: [],
@@ -784,20 +823,6 @@ export function PassengerDetailsForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleValidatedSubmit)} className="space-y-6">
-        {/* Header — "Guest Information" with progress */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground tracking-tight">Guest Information</h2>
-            <p className="text-sm text-muted-foreground mt-1">Provide document details for all travelers.</p>
-          </div>
-          <div className="flex flex-col items-end gap-1.5 shrink-0">
-            <div className="flex items-center gap-2 border border-border rounded-lg px-3 py-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Progress</span>
-              <span className="text-sm font-bold text-primary">{completionPercentage}%</span>
-            </div>
-            <Progress value={completionPercentage} className="h-1.5 w-28" />
-          </div>
-        </div>
 
         {/* Top aggregated banner removed — issues are surfaced via the
             per-room badges and inline field warnings instead. */}
@@ -916,8 +941,8 @@ export function PassengerDetailsForm({
                             )}
                           </div>
 
-                          {/* 5-column form row */}
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                          {/* 6-column form row */}
+                          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                               <FormField
                                 control={form.control}
                                 name={`passengers.${actualIndex}.firstName`}
@@ -975,6 +1000,38 @@ export function PassengerDetailsForm({
                               />
                               <FormField
                                 control={form.control}
+                                name={`passengers.${actualIndex}.nationality`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nationality *</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                                      <FormControl>
+                                        <SelectTrigger className="h-10 bg-muted/40 border-border/60">
+                                          <SelectValue placeholder="Select" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        {countryLists.iraq && (
+                                          <>
+                                            <SelectItem value={countryLists.iraq}>
+                                              {countryLists.iraq}
+                                            </SelectItem>
+                                            <SelectSeparator />
+                                          </>
+                                        )}
+                                        {countryLists.others.map(c => (
+                                          <SelectItem key={c} value={c}>
+                                            {c}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
                                 name={`passengers.${actualIndex}.passportNumber`}
                                 render={({ field }) => (
                                   <FormItem>
@@ -1016,11 +1073,11 @@ export function PassengerDetailsForm({
                             </div>
 
                             {/* Required Documentation — card style */}
-                            {requiredDocuments.length > 0 && (
+                            {normalizedRequiredDocuments.length > 0 && (
                               <div className="space-y-2">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Required Documentation</p>
                                 <div className="grid grid-cols-3 gap-3">
-                                  {requiredDocuments.map(doc => {
+                                  {normalizedRequiredDocuments.map(doc => {
                                     const uploadKey = `${actualIndex}-${doc.id}`;
                                     const isUploadingDoc = uploadingState?.passengerIndex === actualIndex && uploadingState?.docId === doc.id;
                                     const uploadedDoc = getUploadedDoc(actualIndex, doc.id);
@@ -1164,7 +1221,7 @@ export function PassengerDetailsForm({
                           />
                         </div>
 
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           <FormField
                             control={form.control}
                             name={`passengers.${index}.dateOfBirth`}
@@ -1191,6 +1248,38 @@ export function PassengerDetailsForm({
                                     </>
                                   );
                                 })()}
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`passengers.${index}.nationality`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Nationality *</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <FormControl>
+                                    <SelectTrigger className="h-10 bg-background border-input">
+                                      <SelectValue placeholder="Select nationality" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {countryLists.iraq && (
+                                      <>
+                                        <SelectItem value={countryLists.iraq}>
+                                          {countryLists.iraq}
+                                        </SelectItem>
+                                        <SelectSeparator />
+                                      </>
+                                    )}
+                                    {countryLists.others.map(c => (
+                                      <SelectItem key={c} value={c}>
+                                        {c}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
                               </FormItem>
                             )}
                           />
@@ -1264,10 +1353,10 @@ export function PassengerDetailsForm({
                         )}
 
                         {/* Document Uploads */}
-                        {requiredDocuments.length > 0 && (
+                        {normalizedRequiredDocuments.length > 0 && (
                           <div className="grid grid-cols-3 gap-3">
                             <p className="text-sm font-medium text-muted-foreground col-span-3">Required Documents</p>
-                            {requiredDocuments.map(doc => renderDocumentUpload(index, doc))}
+                            {normalizedRequiredDocuments.map(doc => renderDocumentUpload(index, doc))}
                           </div>
                         )}
                       </CardContent>

@@ -9,7 +9,7 @@ import {
   Clock, ListChecks,
   TrendingUp, UsersRound, Landmark, PieChart, Percent,
   Globe, Building2, Gem, MapPin, Shield, Lock, ShieldAlert, Settings2,
-  Pencil, LogOut, HelpCircle, Scale, Plus, ChevronsLeft, ChevronsRight,
+  Pencil, LogOut, HelpCircle, Scale, Plus, ChevronsLeft, ChevronsRight, ChevronDown,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { NavLink } from "@/components/NavLink";
@@ -17,6 +17,7 @@ import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useActiveSections, type ActiveSections } from "@/hooks/useActiveSections";
 import {
   Sidebar, SidebarContent, SidebarHeader, SidebarFooter,
 } from "@/components/ui/sidebar";
@@ -54,6 +55,17 @@ const BADGE_ROUTES: Record<string, string[]> = {
   "/finance": ["payment"],
 };
 
+const urlToSectionKey: Record<string, keyof ActiveSections> = {
+  "/transfers": "transfers",
+  "/tours": "tours",
+  "/requests-and-services": "requests",
+  "/visas": "visas",
+  "/flights": "flights",
+  "/hotels": "hotels",
+  "/packages": "packages",
+  "/packages/custom-group/build": "build_custom",
+};
+
 type NavItemDef = {
   title: string;
   shortLabel?: string;
@@ -72,8 +84,7 @@ const travelModules: NavItemDef[] = [
   { title: "Visas", url: "/visas", icon: VisaIcon, roles: ["admin", "finance", "agency"], adminEditUrl: "/visas?view=manage", adminAddUrl: "/visas?view=manage&new=1" },
   { title: "Tours", url: "/tours", icon: Map, roles: ["admin", "finance", "agency"], adminEditUrl: "/tours?view=manage", adminAddUrl: "/tours?view=manage&new=1" },
   { title: "Transfers", url: "/transfers", icon: ArrowLeftRight, roles: ["admin", "finance", "agency"], adminEditUrl: "/transfers?view=manage", adminAddUrl: "/transfers?view=manage&new=1" },
-  { title: "Special Requests", shortLabel: "Requests", url: "/special-requests", icon: MessageSquarePlus, roles: ["admin", "finance", "agency"] },
-  { title: "Additional Services", shortLabel: "Services", url: "/additional-services", icon: CirclePlus, roles: ["admin", "finance", "agency"], adminEditUrl: "/additional-services?view=manage", adminAddUrl: "/additional-services?view=manage&new=1" },
+  { title: "Requests & Services", shortLabel: "Requests", url: "/requests-and-services", icon: MessageSquarePlus, roles: ["admin", "finance", "agency"], adminEditUrl: "/requests-and-services?view=manage", adminAddUrl: "/requests-and-services?view=manage&new=1" },
   { title: "Booking History", shortLabel: "History", url: "/booking-history", icon: Clock, roles: ["agency"] },
   { title: "My Agency", url: "/my-agency", icon: Settings2, roles: ["agency"] },
 ];
@@ -135,6 +146,25 @@ export function AppSidebar() {
     document.documentElement.style.setProperty("--sidebar-width", compact ? SIDEBAR_COMPACT_WIDTH : SIDEBAR_DEFAULT_WIDTH);
   }, [compact]);
 
+  // ===== Collapsible Sections =====
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return { Travel: true, Manage: false, Admin: false, System: false };
+    try {
+      const stored = localStorage.getItem("sidebar.sections.v1");
+      return stored ? JSON.parse(stored) : { Travel: true, Manage: false, Admin: false, System: false };
+    } catch {
+      return { Travel: true, Manage: false, Admin: false, System: false };
+    }
+  });
+
+  const toggleSection = (label: string) => {
+    setExpandedSections(prev => {
+      const next = { ...prev, [label]: !prev[label] };
+      localStorage.setItem("sidebar.sections.v1", JSON.stringify(next));
+      return next;
+    });
+  };
+
   // ===== Recent visits =====
   const [recent, setRecent] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
@@ -159,12 +189,21 @@ export function AppSidebar() {
     return counts;
   }, [notifications]);
 
+  const { isSectionActive } = useActiveSections();
+
   const isActive = (path: string) => {
     if (currentPath === path) return true;
     if (path === "/packages") return false;
     return currentPath.startsWith(path + "/");
   };
-  const canAccess = (roles: string[]) => !!role && roles.includes(role);
+  const canAccess = (roles: string[], url?: string) => {
+    if (!role || !roles.includes(role)) return false;
+    if (url && urlToSectionKey[url]) {
+      const active = isSectionActive(urlToSectionKey[url]);
+      if (!active && role !== "admin") return false;
+    }
+    return true;
+  };
 
   const userInitial = user?.email?.charAt(0).toUpperCase() || "U";
   const userName = user?.email?.split("@")[0] || "User";
@@ -175,20 +214,20 @@ export function AppSidebar() {
   );
   const recentItems = useMemo(
     () => recent
-      .map((r) => allNavItems.find((i) => i.url === r && canAccess(i.roles)))
+      .map((r) => allNavItems.find((i) => i.url === r && canAccess(i.roles, i.url)))
       .filter(Boolean) as NavItemDef[],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [recent, allNavItems, role]
+    [recent, allNavItems, role, isSectionActive]
   );
 
   // Keyboard shortcuts: Alt+1..9
   const visibleItems = useMemo(() => [
-    ...travelModules.filter((i) => canAccess(i.roles)),
-    ...adminModules.filter((i) => canAccess(i.roles)),
-    ...administrationModules.filter((i) => canAccess(i.roles)),
-    ...settingsItems.filter((i) => canAccess(i.roles)),
+    ...travelModules.filter((i) => canAccess(i.roles, i.url)),
+    ...adminModules.filter((i) => canAccess(i.roles, i.url)),
+    ...administrationModules.filter((i) => canAccess(i.roles, i.url)),
+    ...settingsItems.filter((i) => canAccess(i.roles, i.url)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [role]);
+  ], [role, isSectionActive]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -213,6 +252,9 @@ export function AppSidebar() {
     const showAdminActions = role === "admin" && (item.adminEditUrl || item.adminAddUrl);
     const label = item.shortLabel || item.title;
     const hasBadge = badgeCount > 0;
+    const sectionKey = urlToSectionKey[item.url];
+    const isSectionActiveFlag = sectionKey ? isSectionActive(sectionKey) : true;
+    const isDisabledForAdmin = !isSectionActiveFlag && role === "admin";
 
     return (
       <div className="relative w-full group/rail">
@@ -224,7 +266,8 @@ export function AppSidebar() {
                 "relative flex flex-col items-center justify-center gap-0 mx-1.5 my-px rounded-xl px-1 transition-all duration-200",
                 compact ? "py-2.5" : "py-2",
                 "text-sidebar-rail-fg/80 hover:text-sidebar-rail-fg hover:bg-white/10",
-                active && "sidebar-rail-tile-active text-white"
+                active && "sidebar-rail-tile-active text-white",
+                isDisabledForAdmin && "opacity-50 grayscale"
               )}
               activeClassName=""
             >
@@ -323,17 +366,30 @@ export function AppSidebar() {
     );
   };
 
-  const SectionLabel = ({ children, first }: { children: string; first?: boolean }) => {
+  const SectionLabel = ({ children, first, expanded, onToggle }: { children: string; first?: boolean; expanded: boolean; onToggle: () => void }) => {
     if (compact) {
       return <div className={cn("h-px mx-3 bg-white/15", first ? "mt-2 mb-1" : "my-2")} />;
     }
     const dot = SECTION_DOT[children] || "white";
     return (
-      <div className={cn("px-3 mb-1.5 flex items-center gap-2 justify-center", first ? "mt-3" : "mt-5")}>
+      <div 
+        className={cn("px-3 mb-1.5 flex items-center gap-2 justify-center cursor-pointer group/label", first ? "mt-3" : "mt-5")}
+        onClick={onToggle}
+      >
         {!first && <span className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />}
-        <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/[0.03] border border-white/5 shadow-inner">
-          <span className="h-1.5 w-1.5 rounded-full animate-indicator-pulse" style={{ background: dot, boxShadow: `0 0 8px ${dot}` }} />
-          <span className="text-[8px] font-bold uppercase tracking-[0.18em] text-white/40">{children}</span>
+        <span className={cn(
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/5 shadow-inner transition-all duration-300",
+          "hover:bg-white/10 hover:border-white/20 active:scale-95",
+          !expanded && "opacity-60"
+        )}>
+          <span className={cn(
+            "h-1.5 w-1.5 rounded-full transition-all duration-300", 
+            expanded ? "animate-indicator-pulse" : "scale-75 opacity-50"
+          )} style={{ background: dot, boxShadow: expanded ? `0 0 8px ${dot}` : 'none' }} />
+          <span className="text-[8.5px] font-bold uppercase tracking-[0.2em] text-white/50 group-hover/label:text-white transition-colors">
+            {children}
+          </span>
+          <ChevronDown className={cn("h-2.5 w-2.5 text-white/20 transition-transform duration-300", !expanded && "-rotate-90")} />
         </span>
         {!first && <span className="h-[1px] flex-1 bg-gradient-to-l from-transparent via-white/10 to-transparent" />}
       </div>
@@ -341,10 +397,10 @@ export function AppSidebar() {
   };
 
   const groups: { label: string; items: NavItemDef[] }[] = [
-    { label: "Travel", items: travelModules.filter((i) => canAccess(i.roles)) },
-    { label: "Manage", items: adminModules.filter((i) => canAccess(i.roles)) },
-    { label: "Admin", items: administrationModules.filter((i) => canAccess(i.roles)) },
-    { label: "System", items: settingsItems.filter((i) => canAccess(i.roles)) },
+    { label: "Travel", items: travelModules.filter((i) => canAccess(i.roles, i.url)) },
+    { label: "Manage", items: adminModules.filter((i) => canAccess(i.roles, i.url)) },
+    { label: "Admin", items: administrationModules.filter((i) => canAccess(i.roles, i.url)) },
+    { label: "System", items: settingsItems.filter((i) => canAccess(i.roles, i.url)) },
   ].filter((g) => g.items.length > 0);
 
   let shortcutCounter = 0;
@@ -378,17 +434,29 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <SidebarContent className="flex-1 overflow-y-auto sidebar-rail-scrollbar py-1 relative">
-        {groups.map((group, gi) => (
-          <div key={gi}>
-            <SectionLabel first={gi === 0}>{group.label}</SectionLabel>
-            <div className="flex flex-col">
-              {group.items.map((item) => {
-                shortcutCounter++;
-                return <RailItem key={item.title} item={item} shortcutNum={shortcutCounter} />;
-              })}
+        {groups.map((group, gi) => {
+          const isExpanded = expandedSections[group.label] !== false;
+          return (
+            <div key={gi} className="transition-all duration-300">
+              <SectionLabel 
+                first={gi === 0} 
+                expanded={isExpanded}
+                onToggle={() => toggleSection(group.label)}
+              >
+                {group.label}
+              </SectionLabel>
+              <div className={cn(
+                "flex flex-col overflow-hidden transition-all duration-500 ease-in-out",
+                isExpanded ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+              )}>
+                {group.items.map((item) => {
+                  shortcutCounter++;
+                  return <RailItem key={item.title} item={item} shortcutNum={shortcutCounter} />;
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </SidebarContent>
 
       {/* Footer */}

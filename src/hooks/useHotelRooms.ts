@@ -32,10 +32,10 @@ export function useCreateHotelRoom() {
         .from("hotel_rooms")
         .insert(room)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["hotel-rooms", variables.hotel_id] });
@@ -54,10 +54,10 @@ export function useUpdateHotelRoom() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["hotel-rooms", data.hotel_id] });
@@ -82,6 +82,26 @@ export function useDeleteHotelRoom() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["hotel-rooms", result.hotelId] });
       queryClient.invalidateQueries({ queryKey: ["hotels"] });
+    },
+  });
+}
+
+export function useDeleteAllHotelRooms() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (hotelId: string) => {
+      const { error } = await supabase
+        .from('hotel_rooms')
+        .delete()
+        .eq('hotel_id', hotelId);
+
+      if (error) throw error;
+      return { hotelId };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['hotel-rooms', result.hotelId] });
+      queryClient.invalidateQueries({ queryKey: ['hotels'] });
     },
   });
 }

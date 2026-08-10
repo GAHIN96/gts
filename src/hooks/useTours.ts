@@ -55,10 +55,10 @@ export function useCreateTour() {
         .from("tours")
         .insert(tour)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tours"] });
@@ -76,10 +76,10 @@ export function useUpdateTour() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tours"] });

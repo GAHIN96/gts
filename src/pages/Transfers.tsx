@@ -43,10 +43,14 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ZoneManager } from "@/components/admin/Transfers/ZoneManager";
+import { ZonePricingManager } from "@/components/admin/Transfers/ZonePricingManager";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTransfers, useDeleteTransfer, useUpdateTransfer, type Transfer } from "@/hooks/useTransfers";
 import { TransferForm } from "@/components/admin/TransferForm";
 import { TransferBookingModal } from "@/components/booking/TransferBookingModal";
+import { MapTransferSearch } from "@/components/booking/MapTransferSearch";
 import { ImageCarousel } from "@/components/ui/image-carousel";
 import { useBannerSettings } from "@/hooks/useBannerSettings";
 import { toast } from "sonner";
@@ -81,8 +85,6 @@ const Transfers = () => {
   const [bookingTransfer, setBookingTransfer] = useState<Transfer | null>(null);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [transferTypeFilter, setTransferTypeFilter] = useState("all");
-  const [vehicleTypeFilter, setVehicleTypeFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -90,18 +92,16 @@ const Transfers = () => {
     if (!transfers) return [];
     return transfers.filter((t) => {
       const q = searchQuery.toLowerCase();
-      const matchesSearch =
+      return (
         !q ||
         t.name.toLowerCase().includes(q) ||
         t.route_from?.toLowerCase().includes(q) ||
         t.route_to?.toLowerCase().includes(q) ||
         t.cities?.name.toLowerCase().includes(q) ||
-        t.cities?.country.toLowerCase().includes(q);
-      const matchesType = transferTypeFilter === "all" || t.transfer_type === transferTypeFilter;
-      const matchesVehicle = vehicleTypeFilter === "all" || t.vehicle_type === vehicleTypeFilter;
-      return matchesSearch && matchesType && matchesVehicle;
+        t.cities?.country.toLowerCase().includes(q)
+      );
     });
-  }, [transfers, searchQuery, transferTypeFilter, vehicleTypeFilter]);
+  }, [transfers, searchQuery]);
 
   const handleBook = (transfer: Transfer) => {
     setBookingTransfer(transfer);
@@ -190,28 +190,33 @@ const Transfers = () => {
           <div className="absolute inset-0 bg-gradient-to-r from-navy/80 via-navy/50 to-transparent flex items-center">
             <div className="px-8 md:px-12 max-w-2xl">
               <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">Transfer Services</h1>
-              <p className="text-white/90 text-lg">{isAdmin ? "Manage airport and city transfers" : "Comfortable & reliable transfer services"}</p>
-              {isAdmin && (
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="coral" onClick={() => setEditingTransfer(null)} className="mt-4 shadow-lg"><Plus className="h-4 w-4 mr-2" />Add Transfer</Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-                    <DialogHeader><DialogTitle>{editingTransfer ? "Edit Transfer" : "Add New Transfer"}</DialogTitle></DialogHeader>
-                    <TransferForm transfer={editingTransfer} onSuccess={handleDialogClose} />
-                  </DialogContent>
-                </Dialog>
-              )}
+              <p className="text-white/90 text-lg">Comfortable & reliable transfer services</p>
             </div>
           </div>
         </div>
       )}
 
+      {/* Admin Add/Edit Dialog (Standalone) */}
+      {isAdmin && (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>{editingTransfer ? "Edit Transfer" : "Add New Transfer"}</DialogTitle></DialogHeader>
+            <TransferForm transfer={editingTransfer} onSuccess={handleDialogClose} />
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Manage Table View */}
       {isManageView ? (
-        <>
-          {/* Transfer form dialog for manage view */}
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Tabs defaultValue="transfers" className="space-y-6">
+          <TabsList className="bg-muted">
+            <TabsTrigger value="transfers">Manage Transfers</TabsTrigger>
+            <TabsTrigger value="zones">Zones & Areas</TabsTrigger>
+            <TabsTrigger value="pricing">Zone Pricing</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="transfers" className="space-y-6">
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{editingTransfer ? "Edit Transfer" : "Add New Transfer"}</DialogTitle></DialogHeader>
               <TransferForm transfer={editingTransfer} onSuccess={handleDialogClose} />
@@ -289,120 +294,135 @@ const Transfers = () => {
               )}
             </CardContent>
           </Card>
-        </>
+          </TabsContent>
+          
+          <TabsContent value="zones">
+            <ZoneManager />
+          </TabsContent>
+          
+          <TabsContent value="pricing">
+            <ZonePricingManager />
+          </TabsContent>
+        </Tabs>
       ) : (
         <>
           {/* Search & Filters */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search by name, route, or city..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
-            </div>
-            <Select value={transferTypeFilter} onValueChange={setTransferTypeFilter}>
-              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Transfer Type" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="airport">Airport</SelectItem>
-                <SelectItem value="city">City</SelectItem>
-                <SelectItem value="intercity">Intercity</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={vehicleTypeFilter} onValueChange={setVehicleTypeFilter}>
-              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vehicle Type" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Vehicles</SelectItem>
-                <SelectItem value="sedan">Sedan</SelectItem>
-                <SelectItem value="suv">SUV</SelectItem>
-                <SelectItem value="van">Van</SelectItem>
-                <SelectItem value="bus">Bus</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="mb-8">
+            <MapTransferSearch onBookTransfer={handleBook} />
           </div>
 
-          {/* Transfers Grid */}
-          {filteredTransfers.length === 0 ? (
-            <EmptyState icon={Car} title="No transfers found" description={searchQuery || transferTypeFilter !== "all" || vehicleTypeFilter !== "all" ? "Try adjusting your search or filters." : isAdmin ? "Get started by adding your first transfer service." : "No transfer services are currently available."} actionLabel={isAdmin && !searchQuery && transferTypeFilter === "all" && vehicleTypeFilter === "all" ? "Add Transfer" : undefined} onAction={isAdmin && !searchQuery && transferTypeFilter === "all" && vehicleTypeFilter === "all" ? () => { setEditingTransfer(null); setDialogOpen(true); } : undefined} />
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {filteredTransfers.map((transfer, index) => {
-                const route = getRouteDisplay(transfer);
-                const isInactive = transfer.is_active === false;
-                return (
-                  <Card key={transfer.id} className={`group overflow-hidden border-border/50 hover:border-primary/20 hover:shadow-lg transition-all duration-300 animate-fade-in flex flex-col ${isInactive ? "opacity-60" : ""}`} style={{ animationDelay: `${index * 80}ms` }}>
-                    {transfer.image_url ? (
-                      <div className="relative h-44 overflow-hidden">
-                        <img src={transfer.image_url} alt={transfer.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                        <div className="absolute top-3 right-3 bg-background/90 backdrop-blur-sm rounded-lg px-2.5 py-1 shadow-sm"><span className="text-xs font-medium">{vehicleTypeLabels[transfer.vehicle_type] || transfer.vehicle_type}</span></div>
-                        {isInactive && <div className="absolute top-3 left-3"><Badge variant="destructive" className="text-[10px] gap-1"><EyeOff className="h-2.5 w-2.5" /> Inactive</Badge></div>}
-                        <div className="absolute bottom-3 left-3 right-3">
-                          <h3 className="text-lg font-bold text-white drop-shadow-sm">{transfer.name}</h3>
-                          {transfer.cities && <p className="text-white/80 text-sm flex items-center gap-1 mt-0.5">{transfer.cities.country && getCountryFlagUrl(transfer.cities.country) && <img src={getCountryFlagUrl(transfer.cities.country)!} alt="" className="h-3.5 w-auto rounded-sm" />}<MapPin className="h-3 w-3" />{transfer.cities.name}</p>}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="relative h-32 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent flex items-center px-5">
-                        <div className="flex items-center gap-3.5">
-                          <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center shrink-0"><Car className="h-7 w-7 text-primary/60" /></div>
-                          <div>
-                            <h3 className="text-lg font-bold text-foreground leading-tight">{transfer.name}</h3>
-                            {transfer.cities && <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">{transfer.cities.country && getCountryFlagUrl(transfer.cities.country) && <img src={getCountryFlagUrl(transfer.cities.country)!} alt="" className="h-3.5 w-auto rounded-sm" />}<MapPin className="h-3 w-3" />{transfer.cities.name}, {transfer.cities.country}</p>}
+          {/* Transfers Grid Section */}
+          <div className="space-y-6 mt-12">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Available Transfer Services</h2>
+                <p className="text-sm text-muted-foreground">Select from our pre-configured private and shared routes</p>
+              </div>
+              <div className="relative max-w-sm w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search transfers..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-10 rounded-xl"
+                />
+              </div>
+            </div>
+
+            {filteredTransfers.filter(t => t.is_active !== false).length === 0 ? (
+              <div className="py-16 text-center border rounded-2xl bg-card">
+                <Car className="h-12 w-12 mx-auto mb-3 text-muted-foreground/40" />
+                <h3 className="text-lg font-semibold">No transfers found</h3>
+                <p className="text-sm text-muted-foreground">Try adjusting your search criteria</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredTransfers
+                  .filter(t => t.is_active !== false)
+                  .map((transfer) => {
+                    const route = getRouteDisplay(transfer);
+                    return (
+                      <Card
+                        key={transfer.id}
+                        className="group relative overflow-hidden border border-border/60 hover:border-primary/40 hover:shadow-xl transition-all duration-300 rounded-2xl flex flex-col bg-card"
+                      >
+                        <div className="relative h-44 overflow-hidden bg-muted">
+                          {transfer.image_url ? (
+                            <img
+                              src={transfer.image_url}
+                              alt={transfer.name}
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                              <Car className="h-16 w-16 text-primary/30" />
+                            </div>
+                          )}
+                          <div className="absolute top-3 left-3">
+                            <Badge variant="secondary" className="bg-background/90 backdrop-blur font-semibold shadow-sm">
+                              {transferTypeLabels[transfer.transfer_type] || transfer.transfer_type}
+                            </Badge>
                           </div>
                         </div>
-                        <div className="absolute top-3 right-3 flex items-center gap-2">
-                          {isInactive && <Badge variant="destructive" className="text-[10px] gap-1"><EyeOff className="h-2.5 w-2.5" /> Inactive</Badge>}
-                          <Badge variant="secondary" className="font-medium">{vehicleTypeLabels[transfer.vehicle_type] || transfer.vehicle_type}</Badge>
-                        </div>
-                      </div>
-                    )}
-                    <CardContent className="p-5 flex flex-col flex-1 space-y-4">
-                      <div className="bg-muted/40 rounded-xl p-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1"><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">From</p><p className="font-semibold text-sm text-foreground">{route.from}</p></div>
-                          <div className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-full bg-primary/10"><ArrowRight className="h-4 w-4 text-primary" /></div>
-                          <div className="flex-1 text-right"><p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">To</p><p className="font-semibold text-sm text-foreground">{route.to}</p></div>
-                        </div>
-                      </div>
-                      {transfer.description && <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{transfer.description}</p>}
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge variant="outline" className="text-[11px] px-2 py-0 h-5 font-normal border-border/60 bg-muted/30">{transferTypeLabels[transfer.transfer_type] || transfer.transfer_type}</Badge>
-                        <Badge variant="outline" className="text-[11px] px-2 py-0 h-5 font-normal border-border/60 bg-muted/30"><Users className="h-2.5 w-2.5 mr-1" />Up to {transfer.capacity}</Badge>
-                      </div>
-                      <div className="flex-1" />
-                      <div className="pt-3 border-t border-border/50">
-                        <div className="flex items-center justify-between">
-                          <div><span className="text-xl font-bold text-primary">${transfer.price}</span><span className="text-xs text-muted-foreground ml-1">/ride</span></div>
-                          <div className="flex items-center gap-2">
-                            <Button variant="navy" onClick={() => handleBook(transfer)} className="rounded-xl gap-1.5"><ShoppingCart className="h-4 w-4" />Book Now</Button>
-                            {isAdmin && (
-                              <div className="flex gap-2">
-                                <Button variant="navy-outline" size="sm" onClick={() => handleEdit(transfer)} className="rounded-xl"><Pencil className="h-4 w-4" /></Button>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="sm" className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete Transfer</AlertDialogTitle>
-                                      <AlertDialogDescription>Are you sure you want to delete "{transfer.name}"?</AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDelete(transfer.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
+
+                        <CardContent className="p-5 flex flex-col flex-grow space-y-4">
+                          <div>
+                            <h3 className="font-bold text-lg text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                              {transfer.name}
+                            </h3>
+                            {transfer.cities && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                <MapPin className="h-3.5 w-3.5 text-primary" />
+                                {transfer.cities.name}, {transfer.cities.country}
+                              </p>
                             )}
                           </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+
+                          <div className="bg-muted/40 rounded-xl p-3 border border-border/50 text-xs flex items-center justify-between">
+                            <div className="text-center flex-1">
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">From</p>
+                              <p className="font-semibold text-foreground truncate">{route.from}</p>
+                            </div>
+                            <ArrowRight className="h-4 w-4 text-primary shrink-0 mx-2" />
+                            <div className="text-center flex-1">
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">To</p>
+                              <p className="font-semibold text-foreground truncate">{route.to}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+                            <span className="flex items-center gap-1">
+                              <Car className="h-3.5 w-3.5" />
+                              {vehicleTypeLabels[transfer.vehicle_type] || transfer.vehicle_type}
+                            </span>
+                            <span className="flex items-center gap-1 font-medium">
+                              <Users className="h-3.5 w-3.5" />
+                              Max {transfer.capacity} guests
+                            </span>
+                          </div>
+
+                          <div className="pt-4 border-t border-border flex items-center justify-between mt-auto">
+                            <div>
+                              <span className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider block">Price</span>
+                              <span className="text-2xl font-black text-primary">${transfer.price}</span>
+                            </div>
+                            <Button
+                              variant="navy"
+                              size="sm"
+                              className="rounded-xl px-5 font-bold shadow-md"
+                              onClick={() => handleBook(transfer)}
+                            >
+                              <ShoppingCart className="h-4 w-4 mr-1.5" />
+                              Book Now
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
         </>
       )}
 

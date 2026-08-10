@@ -54,6 +54,7 @@ const tourSchema = z.object({
   description: z.string().optional(),
   includes: z.string().optional(),
   is_active: z.boolean().default(true),
+  is_featured: z.boolean().default(false),
 });
 
 type TourFormValues = z.infer<typeof tourSchema>;
@@ -83,7 +84,7 @@ export function TourForm({ open, onOpenChange, tour }: TourFormProps) {
     resolver: zodResolver(tourSchema),
     defaultValues: {
       name: "", city_id: "", price: 0, duration_hours: 4,
-      max_participants: 20, description: "", includes: "", is_active: true,
+      max_participants: 20, description: "", includes: "", is_active: true, is_featured: false,
     },
   });
 
@@ -96,6 +97,8 @@ export function TourForm({ open, onOpenChange, tour }: TourFormProps) {
         description: tour.description || "",
         includes: tour.includes?.join(", ") || "",
         is_active: tour.is_active ?? true,
+        // @ts-ignore
+        is_featured: tour.is_featured ?? false,
       });
       const existingDayProgram = tour.day_program
         ? (Array.isArray(tour.day_program) ? tour.day_program as unknown as DayProgram[] : [])
@@ -105,7 +108,7 @@ export function TourForm({ open, onOpenChange, tour }: TourFormProps) {
     } else {
       form.reset({
         name: "", city_id: "", price: 0, duration_hours: 4,
-        max_participants: 20, description: "", includes: "", is_active: true,
+        max_participants: 20, description: "", includes: "", is_active: true, is_featured: false,
       });
       setDayPrograms([]);
       setTourImages([]);
@@ -193,12 +196,13 @@ export function TourForm({ open, onOpenChange, tour }: TourFormProps) {
 
   const onSubmit = async (data: TourFormValues) => {
     try {
-      const tourData: TourInsert = {
+      const tourData: any = {
         name: data.name, city_id: data.city_id, price: data.price,
         duration_hours: data.duration_hours, max_participants: data.max_participants,
         description: data.description || null,
         includes: data.includes ? data.includes.split(",").map(i => i.trim()) : [],
         is_active: data.is_active, day_program: dayPrograms as any, images: tourImages,
+        is_featured: data.is_featured,
       };
       if (isEditing && tour) {
         await updateTour.mutateAsync({ id: tour.id, ...tourData });
@@ -384,6 +388,15 @@ export function TourForm({ open, onOpenChange, tour }: TourFormProps) {
                         <div>
                           <Label className="font-semibold text-sm">Active Status</Label>
                           <p className="text-xs text-muted-foreground">Make available for booking</p>
+                        </div>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </div>
+                    )} />
+                    <FormField control={form.control} name="is_featured" render={({ field }) => (
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/20">
+                        <div>
+                          <Label className="font-semibold text-sm">Top Deal</Label>
+                          <p className="text-xs text-muted-foreground">Feature this tour as a top deal</p>
                         </div>
                         <Switch checked={field.value} onCheckedChange={field.onChange} />
                       </div>

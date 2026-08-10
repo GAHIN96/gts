@@ -612,6 +612,7 @@ const BookPackage = () => {
           firstName: p.firstName,
           lastName: p.lastName,
           passportNumber: p.passportNumber,
+          nationality: p.nationality,
           documents: p.documents || [],
         })) as any,
         total_amount: calculateGrandTotal(),

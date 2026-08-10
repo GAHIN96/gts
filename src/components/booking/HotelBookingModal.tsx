@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Hotel, MapPin, Star, CalendarIcon, Users, Bed, DollarSign, FileText, Coffee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +26,6 @@ import { pickRoomBand, resolveRoomPrice } from "@/lib/roomPricingTier";
 import { getStayWindowRemaining, buildDayDetails } from "@/lib/hotelAvailability";
 import { useHotelAvailableDates } from "@/hooks/useHotelAvailableDates";
 import { useHotelBookings } from "@/hooks/useHotelBookings";
-// getStayWindowRemaining already imported above
 
 interface HotelBookingModalProps {
   open: boolean;
@@ -106,19 +107,48 @@ export function HotelBookingModal({
 
   const activeRooms = (hotel?.hotel_rooms || []).filter((r: any) => r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
   const roomCount = rooms.length;
-  const cheapestRoom = activeRooms.length > 0
-    ? activeRooms.reduce((min: any, r: any) =>
-        ((r.price_per_night ?? r.price_adult ?? 0) < (min.price_per_night ?? min.price_adult ?? 0)) ? r : min
-      , activeRooms[0])
-    : null;
-
+  
   // Live availability for the chosen window — used to pick the default-rate
   // band (matches the search card so card price = booking summary price).
   const { data: hotelAvailableDates = [] } = useHotelAvailableDates();
-  const { data: hotelBookings = [] } = useHotelBookings();
-  // Shared helper — same inputs as the search card so the per-night band
-  // (e.g. 10–6 vs 6–1 in admin Default Prices) always matches what the user
-  // saw on the card. `null` and `0` both mean "sold out for these dates".
+  // Use the same query logic as the HotelAvailabilityInsightsCalendar to ensure parity
+  const { data: hotelBookings = [] } = useQuery({
+    queryKey: ["hotel-bookings-sync", hotel?.id],
+    queryFn: async () => {
+      if (!hotel?.id) return [];
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("id, booking_number, status, passengers, passenger_details, notes, hotel_id")
+        .eq("hotel_id", hotel.id)
+        .neq("status", "canceled");
+      
+      if (error) throw error;
+      
+      return (data || []).map((b: any) => {
+        let meta = {};
+        try {
+          meta = typeof b.notes === 'string' ? JSON.parse(b.notes) : (b.notes || {});
+        } catch (e) {
+          console.error("Error parsing booking notes:", e);
+        }
+        
+        const check_in = (meta as any).check_in || (meta as any).checkIn || null;
+        const check_out = (meta as any).check_out || (meta as any).checkOut || null;
+        const rooms = Number((meta as any).rooms || (meta as any).roomCount || 1);
+        
+        return {
+          id: b.id,
+          hotel_id: b.hotel_id,
+          status: b.status,
+          check_in,
+          check_out,
+          rooms,
+        };
+      });
+    },
+    enabled: !!hotel?.id,
+  });
+  
   const availableInPeriod = hotel && checkIn && checkOut
     ? getStayWindowRemaining(
         hotel.id,
@@ -132,7 +162,10 @@ export function HotelBookingModal({
 
   const dayDetails = buildDayDetails(hotelAvailableDates, hotelBookings, hotel?.id || "");
 
-  const perRoomPricing = rooms.map((r) => {
+  // Clone dayDetails to track inventory decrements during this pricing calculation
+  const tempDayDetailsForPricing = JSON.parse(JSON.stringify(dayDetails));
+
+  const perRoomPricing = rooms.map((r, rIdx) => {
     const type = deriveRoomType(r);
     
     let totalRoomPrice = 0;
@@ -140,22 +173,25 @@ export function HotelBookingModal({
     if (checkIn && checkOut && nights > 0) {
       const specials = (hotel as any)?.hotel_special_prices || [];
       
-      // Calculate bottleneck inventory for the stay
-      let bottleneckInventory = Number.MAX_SAFE_INTEGER;
       for (let i = 0; i < nights; i++) {
         const night = addDays(checkIn, i);
         const dayKey = format(night, "yyyy-MM-dd");
-        const inv = dayDetails[dayKey]?.remaining ?? 0;
-        if (inv < bottleneckInventory) bottleneckInventory = inv;
-      }
-      if (bottleneckInventory === Number.MAX_SAFE_INTEGER) bottleneckInventory = 0;
-
-      for (let i = 0; i < nights; i++) {
-        const night = addDays(checkIn, i);
-        const resolved = resolveRoomPrice(activeRooms as any, type, bottleneckInventory, specials, night);
+        
+        // Use the temp inventory that decrements per room
+        const inv = tempDayDetailsForPricing[dayKey]?.remaining ?? 0;
+        const resolved = resolveRoomPrice(activeRooms as any, type, inv, specials, night);
         const priceForNight = resolved?.adult ?? hotel?.price_per_night ?? 0;
         totalRoomPrice += priceForNight;
-        dailyLogs.push(`${format(night, "MMM dd")}: $${priceForNight} (Inv: ${bottleneckInventory})`);
+        dailyLogs.push(`${format(night, "MMM dd")}: $${priceForNight} (Inv: ${inv})`);
+      }
+
+      // After pricing this room for its entire stay, decrement the inventory for all days of that stay
+      for (let i = 0; i < nights; i++) {
+        const night = addDays(checkIn, i);
+        const dayKey = format(night, "yyyy-MM-dd");
+        if (tempDayDetailsForPricing[dayKey]) {
+          tempDayDetailsForPricing[dayKey].remaining = Math.max(0, tempDayDetailsForPricing[dayKey].remaining - 1);
+        }
       }
     } else {
       // Fallback if no dates
@@ -178,7 +214,6 @@ export function HotelBookingModal({
   const displayRoomTypeName = perRoomPricing[0]?.displayType || "Double";
   const pricePerNight = Math.round(perRoomPricing[0]?.price ?? 0);
 
-
   const totalPrice = perRoomPricing.reduce((sum, p) => sum + p.price * nights, 0);
   const totalChildren = (r: RoomConfig) => r.children6to12 + r.children2to6;
   const totalGuests = rooms.reduce((sum, r) => sum + r.adults + totalChildren(r) + r.infants, 0);
@@ -189,8 +224,6 @@ export function HotelBookingModal({
     return {
       roomNumber: idx + 1,
       roomType: `${room.adults} Adult${room.adults > 1 ? 's' : ''}${ch > 0 ? `, ${ch} Child${ch > 1 ? 'ren' : ''}` : ''}${room.infants > 0 ? `, ${room.infants} Infant${room.infants > 1 ? 's' : ''}` : ''}`,
-      // Pass the resolved tier-band display name (e.g. "Single", "Double + Extra Bed")
-      // so the passenger-form room header matches the booking summary chips.
       bedType: perRoomPricing[idx]?.displayType,
       guestCount: room.adults + ch + room.infants,
       adults: room.adults,
@@ -274,7 +307,6 @@ export function HotelBookingModal({
 
   if (!hotel) return null;
 
-  // Voucher view
   if (bookingResult && checkIn && checkOut && step === "voucher") {
     return (
       <>
@@ -321,7 +353,6 @@ export function HotelBookingModal({
     );
   }
 
-  // Payment step
   if (bookingResult && step === "payment") {
     return (
       <Dialog open={open} onOpenChange={handleClose}>
@@ -341,13 +372,11 @@ export function HotelBookingModal({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="!max-w-none !w-auto !left-[var(--sidebar-width,16rem)] !right-0 !top-0 !translate-x-0 !translate-y-0 h-screen sm:rounded-none overflow-y-auto p-0">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px]">
-          {/* Left Panel - Main Content */}
           <div className="p-6 space-y-5">
             <DialogHeader>
               <DialogTitle className="text-xl">Book Hotel</DialogTitle>
             </DialogHeader>
 
-            {/* Hotel Summary Card */}
             <div className="bg-white rounded-2xl p-6 space-y-4 border border-border shadow-sm hover:shadow-md transition-shadow duration-300">
               <div className="flex flex-col md:flex-row md:items-center gap-6">
                 <div className="h-24 w-24 rounded-2xl overflow-hidden bg-muted flex-shrink-0 border-2 border-primary/10">
@@ -388,7 +417,6 @@ export function HotelBookingModal({
                 </div>
               </div>
 
-              {/* Dates - hide when coming from search (already chosen) */}
               {!hasSearchParams && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-border mt-2">
                   <div className="space-y-2.5">
@@ -458,7 +486,6 @@ export function HotelBookingModal({
               </div>
             )}
 
-            {/* Room Configurator - hide when coming from search */}
             {!hasSearchParams && (
               <HotelRoomConfigurator
                 rooms={rooms}
@@ -470,7 +497,6 @@ export function HotelBookingModal({
               />
             )}
 
-            {/* Review Step */}
             {step === "review" && pendingPassengerData && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="bg-primary/5 rounded-2xl p-6 border border-primary/10">
@@ -478,7 +504,6 @@ export function HotelBookingModal({
                   <p className="text-sm text-muted-foreground">Please double check all details before confirming your booking.</p>
                 </div>
 
-                {/* Traveler Summary */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-4">
                     <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
@@ -557,7 +582,6 @@ export function HotelBookingModal({
               </div>
             )}
 
-            {/* Passenger Forms - grouped by room */}
             {step === "form" && guestsApplied && nights > 0 && (
               <div>
                 <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
@@ -578,7 +602,6 @@ export function HotelBookingModal({
             )}
           </div>
 
-          {/* Right Panel - Booking Summary Sidebar */}
           <div className="hidden lg:block border-l border-border bg-slate-50/50 p-6">
             <div className="sticky top-0 space-y-6">
               <h4 className="font-bold text-lg text-primary flex items-center gap-2">
@@ -586,7 +609,6 @@ export function HotelBookingModal({
                 Stay Summary
               </h4>
 
-              {/* Hotel mini-card */}
               <div className="rounded-2xl overflow-hidden border border-border bg-white shadow-sm ring-1 ring-black/[0.02]">
                 {hotel?.images?.[0] ? (
                   <img src={hotel.images[0]} alt={hotel.name} className="w-full h-32 object-cover" />
@@ -604,7 +626,6 @@ export function HotelBookingModal({
                 </div>
               </div>
 
-              {/* Dates & Duration */}
               <div className="space-y-3 bg-white p-4 rounded-2xl border border-border shadow-sm">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500 font-medium">Check-in</span>
@@ -620,7 +641,6 @@ export function HotelBookingModal({
                 </div>
               </div>
 
-              {/* Room & Price breakdown */}
               <div className="space-y-4 bg-white p-4 rounded-2xl border border-border shadow-sm">
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inventory Details</p>
@@ -628,6 +648,25 @@ export function HotelBookingModal({
                     {roomCount} {roomCount === 1 ? 'Room' : 'Rooms'}
                   </Badge>
                 </div>
+
+                {checkIn && checkOut && (
+                  <div className="bg-slate-50 rounded-lg p-2.5 space-y-1">
+                    {(() => {
+                      // Get stats for the stay (first night as sample for the window)
+                      const dayKey = format(checkIn, "yyyy-MM-dd");
+                      const stats = dayDetails[dayKey];
+                      if (!stats) return <p className="text-[10px] text-slate-400">Inventory not defined for these dates</p>;
+                      return (
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Availability</span>
+                          <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-gradient-to-r from-blue-500/10 to-transparent text-blue-700 border-blue-500/20 backdrop-blur-sm shadow-sm">
+                            {stats.remaining} Left
+                          </Badge>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
                 
                 <div className="space-y-3">
                   {perRoomPricing.map((p, idx) => (
@@ -645,9 +684,7 @@ export function HotelBookingModal({
                 </div>
               </div>
 
-              {/* Total Card */}
               <div className="bg-primary rounded-2xl p-6 text-white shadow-lg shadow-primary/20 relative overflow-hidden group">
-                {/* Decorative circle */}
                 <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
                 
                 <div className="relative z-10 space-y-1">

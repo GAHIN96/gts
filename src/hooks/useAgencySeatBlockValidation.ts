@@ -22,7 +22,7 @@ export function useAgencySeatBlockValidation(flightId: string | null): SeatBlock
         .from("agencies")
         .select("id")
         .eq("user_id", user!.id)
-        .single();
+        .maybeSingle();
       if (error) return null;
       return data;
     },

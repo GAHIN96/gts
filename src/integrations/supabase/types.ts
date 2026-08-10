@@ -889,6 +889,13 @@ export type Database = {
           valid_from: string | null
           valid_until: string | null
           visa_amount: number | null
+          alert_level: number | null
+          duration: string | null
+          baggage: string | null
+          departure_flight_number: string | null
+          return_flight_number: string | null
+          transit_airport: string | null
+          transit_duration: string | null
         }
         Insert: {
           airline: string
@@ -930,6 +937,13 @@ export type Database = {
           valid_from?: string | null
           valid_until?: string | null
           visa_amount?: number | null
+          alert_level?: number | null
+          duration?: string | null
+          baggage?: string | null
+          departure_flight_number?: string | null
+          return_flight_number?: string | null
+          transit_airport?: string | null
+          transit_duration?: string | null
         }
         Update: {
           airline?: string
@@ -971,6 +985,13 @@ export type Database = {
           valid_from?: string | null
           valid_until?: string | null
           visa_amount?: number | null
+          alert_level?: number | null
+          duration?: string | null
+          baggage?: string | null
+          departure_flight_number?: string | null
+          return_flight_number?: string | null
+          transit_airport?: string | null
+          transit_duration?: string | null
         }
         Relationships: [
           {

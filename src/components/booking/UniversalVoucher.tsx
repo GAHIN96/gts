@@ -220,80 +220,72 @@ export function UniversalVoucher({ details, onClose, printMode = false }: Univer
           }}
         >
           {/* ══════════ ELITE COMMAND HEADER ══════════ */}
-            <div 
-              style={{ 
-                background: `#1A237E`,
-                padding: "48px 60px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                position: "relative",
-                overflow: "hidden",
-                borderBottom: `2px solid ${primaryColor}`,
-              }}
-            >
-            {/* Luminous accents */}
-            <div style={{
-              position: "absolute", top: "0", left: "0", right: "0", height: "1px",
-              background: `linear-gradient(90deg, transparent, ${primaryColor}, transparent)`,
-              opacity: 0.5,
-            }} />
-            <div style={{
-              position: "absolute", top: "0", right: "0", bottom: "0", width: "40%",
-              background: `linear-gradient(135deg, transparent 0%, ${primaryColor}05 100%)`,
-            }} />
-            
-            <div style={{ display: "flex", alignItems: "center", gap: "24px", position: "relative", zIndex: 1 }}>
+          {/* ══════════ EXECUTIVE COMMAND HEADER ══════════ */}
+          <div 
+            style={{ 
+              background: "#0F172A",
+              padding: "40px 48px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              position: "relative",
+              overflow: "hidden",
+              borderBottom: "3px solid #D97706",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "20px", position: "relative", zIndex: 1 }}>
               {settings.logo ? (
                 <div style={{
-                  background: "rgba(255,255,255,0.03)",
-                  borderRadius: "20px",
-                  padding: "12px",
+                  background: "#FFFFFF",
+                  borderRadius: "14px",
+                  padding: "8px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  border: "1px solid rgba(255,255,255,0.05)",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
                 }}>
                   <img 
                     src={settings.logo} 
                     alt="Logo" 
-                    style={{ height: "64px", width: "64px", objectFit: "contain" }} 
+                    style={{ height: "54px", width: "54px", objectFit: "contain" }} 
                   />
                 </div>
               ) : (
                 <div style={{
-                  width: "64px", height: "64px", borderRadius: "20px",
-                  background: primaryColor,
-                  display: "flex", alignItems: "center", justifyItems: "center",
-                  fontSize: "24px", fontWeight: 900, color: "#fff",
+                  width: "56px", height: "56px", borderRadius: "14px",
+                  background: "linear-gradient(135deg, #1E293B, #0F172A)",
+                  border: "1px solid #334155",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "22px", fontWeight: 900, color: "#D97706",
+                  letterSpacing: "1px",
                 }}>
                   GTS
                 </div>
               )}
               <div>
-                <div style={{ color: "#fff", fontSize: "28px", fontWeight: 900, letterSpacing: "-0.5px", textTransform: "uppercase" }}>
-                  {settings.companyName || "GTS_SYSTEMS"}
+                <div style={{ color: "#FFFFFF", fontSize: "24px", fontWeight: 800, letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                  {settings.companyName || "GTS BOOKING SYSTEMS"}
                 </div>
-                <div style={{ color: primaryColor, fontSize: "10px", marginTop: "6px", letterSpacing: "4px", fontWeight: 900, textTransform: "uppercase" }}>
-                  {settings.tagline || "Premium Travel Logistics"}
+                <div style={{ color: "#D97706", fontSize: "10px", marginTop: "4px", letterSpacing: "3px", fontWeight: 700, textTransform: "uppercase" }}>
+                  {settings.tagline || "Official Travel Voucher & Confirmation"}
                 </div>
               </div>
             </div>
+
             <div style={{ textAlign: "right", position: "relative", zIndex: 1 }}>
               <div style={{ 
-                color: "rgba(255,255,255,0.2)", fontSize: "10px", textTransform: "uppercase", 
-                letterSpacing: "3px", fontWeight: 900,
+                color: "#94A3B8", fontSize: "9px", textTransform: "uppercase", 
+                letterSpacing: "2.5px", fontWeight: 700,
               }}>
-                Reference Number
+                BOOKING REFERENCE
               </div>
               <div style={{ 
-                color: "#fff", fontSize: "24px", fontWeight: 900, fontFamily: "monospace",
-                letterSpacing: "4px", marginTop: "8px", textShadow: `0 0 20px ${primaryColor}40`,
+                color: "#FFFFFF", fontSize: "22px", fontWeight: 900, fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+                letterSpacing: "3px", marginTop: "4px", background: "rgba(255,255,255,0.06)", padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)",
               }}>
                 {details.bookingNumber}
               </div>
-              <div style={{ marginTop: "8px", fontSize: "11px", color: "rgba(255,255,255,0.4)", fontWeight: 700, fontFamily: "monospace", letterSpacing: "1px" }}>
+              <div style={{ marginTop: "6px", fontSize: "10px", color: "#64748B", fontWeight: 600, letterSpacing: "0.5px" }}>
                 ISSUED: {format(new Date(), "dd.MM.yyyy / HH:mm")}
               </div>
             </div>
@@ -301,45 +293,44 @@ export function UniversalVoucher({ details, onClose, printMode = false }: Univer
 
           {/* ══════════ TYPE BANNER ══════════ */}
           <div style={{ 
-            background: "#f8fafc", 
-            borderBottom: "1px solid #e2e8f0",
-            padding: "20px 60px",
+            background: "#F8FAFC", 
+            borderBottom: "1px solid #E2E8F0",
+            padding: "16px 48px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div style={{
-                width: "40px", height: "40px", borderRadius: "12px",
-                background: `${primaryColor}10`,
+                width: "36px", height: "36px", borderRadius: "10px",
+                background: "#0F172A",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                color: primaryColor,
-                border: `1px solid ${primaryColor}20`,
+                color: "#D97706",
+                boxShadow: "0 2px 6px rgba(15,23,42,0.15)",
               }}>
                 {typeIcons[details.type]}
               </div>
               <div style={{ 
-                fontSize: "14px", fontWeight: 900, color: "#1a237e",
-                textTransform: "uppercase", letterSpacing: "4px",
+                fontSize: "13px", fontWeight: 800, color: "#0F172A",
+                textTransform: "uppercase", letterSpacing: "2.5px",
               }}>
                 {typeLabels[details.type]}
               </div>
             </div>
             <div style={{
-              display: "inline-flex", alignItems: "center", gap: "10px",
-              padding: "8px 20px", borderRadius: "12px",
-              background: details.status === "pending" ? "rgba(245,158,11,0.05)" : "rgba(34,197,94,0.05)",
-              border: `1px solid ${details.status === "pending" ? "rgba(245,158,11,0.2)" : "rgba(34,197,94,0.2)"}`,
+              display: "inline-flex", alignItems: "center", gap: "8px",
+              padding: "6px 16px", borderRadius: "8px",
+              background: details.status === "pending" ? "#FEF3C7" : "#DCFCE7",
+              border: `1px solid ${details.status === "pending" ? "#FCD34D" : "#86EFAC"}`,
             }}>
               <div style={{
-                width: "8px", height: "8px", borderRadius: "50%",
-                background: details.status === "pending" ? "#f59e0b" : "#22c55e",
-                boxShadow: `0 0 12px ${details.status === "pending" ? "#f59e0b" : "#22c55e"}`,
+                width: "7px", height: "7px", borderRadius: "50%",
+                background: details.status === "pending" ? "#D97706" : "#166534",
               }} />
               <span style={{ 
-                fontSize: "10px", fontWeight: 900, 
-                color: details.status === "pending" ? "#f59e0b" : "#22c55e",
-                textTransform: "uppercase", letterSpacing: "2px",
+                fontSize: "10px", fontWeight: 800, 
+                color: details.status === "pending" ? "#92400E" : "#166534",
+                textTransform: "uppercase", letterSpacing: "1.5px",
               }}>
                 {details.status === "pending" ? "Under Review" : "Confirmed"}
               </span>
@@ -553,28 +544,28 @@ const tdStyle: React.CSSProperties = {
   textAlign: "center",
 };
 
-function SectionHeader({ title, icon, color }: { title: string; icon: React.ReactNode; color: string }) {
+function SectionHeader({ title, icon }: { title: string; icon: React.ReactNode; color?: string }) {
   return (
     <div style={{ 
-      display: "flex", alignItems: "center", gap: "12px",
-      marginBottom: "16px",
+      display: "flex", alignItems: "center", gap: "10px",
+      marginBottom: "14px",
     }}>
       <div style={{
-        width: "32px", height: "32px", borderRadius: "10px",
-        background: `linear-gradient(135deg, ${color}, ${color}cc)`,
+        width: "28px", height: "28px", borderRadius: "8px",
+        background: "#0F172A",
         display: "flex", alignItems: "center", justifyContent: "center",
-        color: "#fff",
-        boxShadow: `0 3px 8px ${color}25`,
+        color: "#D97706",
+        boxShadow: "0 2px 4px rgba(15,23,42,0.1)",
       }}>
         {icon}
       </div>
       <span style={{ 
-        fontSize: "13px", fontWeight: 800, color: "#1e293b",
-        textTransform: "uppercase", letterSpacing: "1.2px",
+        fontSize: "12px", fontWeight: 800, color: "#0F172A",
+        textTransform: "uppercase", letterSpacing: "1.5px",
       }}>
         {title}
       </span>
-      <div style={{ flex: 1, height: "1px", background: `linear-gradient(to right, ${color}20, transparent)` }} />
+      <div style={{ flex: 1, height: "1px", background: "linear-gradient(to right, #CBD5E1, transparent)" }} />
     </div>
   );
 }
@@ -584,24 +575,24 @@ function InfoBox({ label, value, highlight, icon }: { label: string; value: stri
 
   return (
     <div style={{
-      padding: isLongValue ? "14px 16px" : "16px 18px",
-      background: highlight ? "linear-gradient(135deg, #f0fdf4, #ecfdf5)" : "#f8fafc",
-      border: `1.5px solid ${highlight ? "#bbf7d0" : "#e8ecf1"}`,
+      padding: isLongValue ? "12px 14px" : "14px 16px",
+      background: highlight ? "#FEF3C7" : "#F8FAFC",
+      border: `1.5px solid ${highlight ? "#FCD34D" : "#E2E8F0"}`,
       borderRadius: "10px",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-        {icon && <span style={{ color: highlight ? "#16a34a" : "#94a3b8" }}>{icon}</span>}
-        <span style={{ fontSize: "9px", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+        {icon && <span style={{ color: highlight ? "#B45309" : "#64748B" }}>{icon}</span>}
+        <span style={{ fontSize: "9px", color: highlight ? "#92400E" : "#64748B", textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>
           {label}
         </span>
       </div>
       <div style={{ 
-        fontSize: isLongValue ? "15px" : "18px",
+        fontSize: isLongValue ? "14px" : "17px",
         fontWeight: 800,
-        color: highlight ? "#166534" : "#1e293b",
-        fontFamily: "'Courier New', monospace",
-        letterSpacing: isLongValue ? "0.3px" : "1px",
-        lineHeight: isLongValue ? "1.25" : "1.15",
+        color: highlight ? "#78350F" : "#0F172A",
+        fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+        letterSpacing: isLongValue ? "0.2px" : "1px",
+        lineHeight: isLongValue ? "1.2" : "1.1",
         whiteSpace: isLongValue ? "normal" : "nowrap",
         overflowWrap: isLongValue ? "anywhere" : "normal",
       }}>

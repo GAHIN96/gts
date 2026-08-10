@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, Fragment, Component, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,9 +72,55 @@ import { FlightSeatBlockManager } from "@/components/admin/FlightSeatBlockManage
 import { useAllFlightSeatBlocks } from "@/hooks/useFlightSeatBlocks";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { exportToExcel } from "@/utils/excelExport";
 import { ModulePageHeader } from "@/components/ui/module-page-header";
+import { isAbortError } from "@/utils/errorUtils";
 
+// Error boundary to prevent blank white page when FlightSearchSection crashes
+class SearchErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; errorMsg: string }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, errorMsg: "" };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMsg: error?.message || "An unexpected error occurred" };
+  }
+  componentDidCatch(error: Error) {
+    console.error("FlightSearchSection crashed:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[300px] space-y-4 p-8 rounded-2xl border border-destructive/20 bg-destructive/5">
+          <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+            <span className="text-2xl">⚠️</span>
+          </div>
+          <div className="text-center">
+            <h3 className="text-lg font-semibold">Flight Search Error</h3>
+            <p className="text-muted-foreground text-sm mt-1">Something went wrong while loading the flight search. Please refresh to try again.</p>
+            {this.state.errorMsg && (
+              <p className="text-xs text-destructive mt-2 max-w-md mx-auto font-mono">{this.state.errorMsg}</p>
+            )}
+          </div>
+          <button
+            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition"
+            onClick={() => { this.setState({ hasError: false, errorMsg: "" }); window.location.reload(); }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 type ColumnKey = 'schedule' | 'date' | 'price' | 'seats';
 
@@ -95,31 +141,57 @@ interface FlightTableProps {
 }
 
 function FlightTable({ flights, onEdit, onDelete, onBlockSeats, blockedSeatsMap = {}, visibleColumns }: FlightTableProps) {
-  // Group linked flights together
+  // Group linked flights and identical routes together
   const groupedFlights = useMemo(() => {
     const processed = new Set<string>();
-    const groups: { outbound: Flight; return?: Flight }[] = [];
     
-    flights.forEach((flight) => {
-      if (processed.has(flight.id)) return;
+    // First, map all flights by their routeKey to combine multiple dates
+    const routeGroups = new Map<string, Flight[]>();
+    flights.forEach(f => {
+      // If flight has no flight_number, it gets its own group
+      const key = f.flight_number ? `${f.airline}-${f.flight_number}-${f.departure_city}-${f.arrival_city}` : f.id;
+      if (!routeGroups.has(key)) routeGroups.set(key, []);
+      routeGroups.get(key)!.push(f);
+    });
+
+    const groups: { outbound: Flight; return?: Flight; departuresCount?: number }[] = [];
+    
+    // Process each route group
+    Array.from(routeGroups.values()).forEach(groupFlights => {
+      // We take the first flight as the representative outbound for this route package
+      const representative = groupFlights[0];
+      if (processed.has(representative.id)) return;
       
-      // Check if this flight has a linked return flight
-      const linkedFlight = flight.linked_flight_id 
-        ? flights.find(f => f.id === flight.linked_flight_id)
-        : flights.find(f => f.linked_flight_id === flight.id);
+      // Check if this representative has a linked return flight
+      const linkedFlight = representative.linked_flight_id 
+        ? flights.find(f => f.id === representative.linked_flight_id)
+        : flights.find(f => f.linked_flight_id === representative.id);
       
       if (linkedFlight && !processed.has(linkedFlight.id)) {
         // Determine which is outbound and which is return
-        const isOutbound = !flight.linked_flight_id;
+        const isOutbound = !representative.linked_flight_id;
         groups.push({
-          outbound: isOutbound ? flight : linkedFlight,
-          return: isOutbound ? linkedFlight : flight,
+          outbound: isOutbound ? representative : linkedFlight,
+          return: isOutbound ? linkedFlight : representative,
+          departuresCount: groupFlights.length,
         });
-        processed.add(flight.id);
+        processed.add(representative.id);
         processed.add(linkedFlight.id);
+        // mark all other departures in this group as processed
+        groupFlights.forEach(f => {
+          processed.add(f.id);
+          if (f.linked_flight_id) processed.add(f.linked_flight_id);
+          else {
+            const ret = flights.find(rf => rf.linked_flight_id === f.id);
+            if (ret) processed.add(ret.id);
+          }
+        });
       } else {
-        groups.push({ outbound: flight });
-        processed.add(flight.id);
+        groups.push({ 
+          outbound: representative,
+          departuresCount: groupFlights.length
+        });
+        groupFlights.forEach(f => processed.add(f.id));
       }
     });
     
@@ -159,7 +231,14 @@ function FlightTable({ flights, onEdit, onDelete, onBlockSeats, blockedSeatsMap 
                     </div>
                   )}
                   <div>
-                    <p className="font-medium">{group.outbound.flight_number || group.outbound.airline}</p>
+                    <p className="font-medium flex items-center gap-2">
+                      <span>{group.outbound.flight_number || group.outbound.airline}</span>
+                      {group.outbound.departure_flight_number && (
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                          {group.outbound.departure_flight_number}
+                        </span>
+                      )}
+                    </p>
                     <div className="flex items-center gap-1 text-sm text-muted-foreground">
                       <span>{group.outbound.departure_city}</span>
                       {group.outbound.departure_airport_code && <span className="text-[10px] font-sans font-medium font-bold">({group.outbound.departure_airport_code})</span>}
@@ -202,7 +281,12 @@ function FlightTable({ flights, onEdit, onDelete, onBlockSeats, blockedSeatsMap 
               {visibleColumns.has('date') && (
                 <TableCell>
                   <div className="space-y-1">
-                    {group.outbound.schedule_type === "recurring" ? (
+                    {group.departuresCount && group.departuresCount > 1 ? (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-primary" />
+                        <span className="font-medium text-primary">{group.departuresCount} Departures</span>
+                      </div>
+                    ) : group.outbound.schedule_type === "recurring" ? (
                       <>
                         <ScheduleBadge scheduleType="recurring" recurringDays={group.outbound.recurring_days || []} validUntil={group.outbound.valid_until} />
                         {group.outbound.valid_until && (
@@ -301,7 +385,14 @@ function FlightTable({ flights, onEdit, onDelete, onBlockSeats, blockedSeatsMap 
                   <div className="flex items-center gap-3 pl-4 opacity-80">
                     <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />
                     <div>
-                      <p className="font-medium text-sm">{group.return.flight_number || group.return.airline}</p>
+                      <p className="font-medium text-sm flex items-center gap-2">
+                        <span>{group.return.flight_number || group.return.airline}</span>
+                        {(group.return.return_flight_number || group.outbound.return_flight_number || group.return.departure_flight_number) && (
+                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                            {group.return.return_flight_number || group.outbound.return_flight_number || group.return.departure_flight_number}
+                          </span>
+                        )}
+                      </p>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <span>{group.return.departure_city}</span>
                         {group.return.departure_airport_code && <span className="text-[10px] font-sans font-medium font-bold">({group.return.departure_airport_code})</span>}
@@ -433,21 +524,75 @@ const Flights = () => {
 
   // Transform deals for SpecialOffersSection
   const formattedDeals = useMemo(() => {
-    if (!activeFlightDeals) return [];
-    return activeFlightDeals.map(deal => ({
-      id: deal.id,
-      title: deal.title,
-      description: deal.description || '',
-      originalPrice: deal.original_price,
-      discountedPrice: deal.discounted_price,
-      discountPercent: deal.discount_percent,
-      image: deal.image_url || 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=600&h=400&fit=crop',
-      expiresIn: deal.expires_at 
-        ? `${formatDistanceToNow(new Date(deal.expires_at))} left` 
-        : undefined,
-      featured: deal.is_featured || false,
-    }));
-  }, [activeFlightDeals]);
+    const deals = activeFlightDeals ? activeFlightDeals.map(deal => {
+      const f = deal.flight;
+      return {
+        id: deal.id,
+        title: deal.title,
+        description: deal.description || '',
+        originalPrice: deal.original_price,
+        discountedPrice: deal.discounted_price,
+        discountPercent: deal.discount_percent,
+        image: deal.image_url || 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=600&h=400&fit=crop',
+        expiresIn: deal.expires_at 
+          ? `${formatDistanceToNow(new Date(deal.expires_at))} left` 
+          : undefined,
+        featured: deal.is_featured || false,
+        onClick: f ? () => handleBook(f as any) : undefined,
+        
+        // Flight details
+        flightNumber: f?.flight_number || undefined,
+        airline: f?.airline || undefined,
+        airlineLogo: f?.airline_logo || undefined,
+        departureCity: f?.departure_city || undefined,
+        arrivalCity: f?.arrival_city || undefined,
+        departureAirportCode: f?.departure_airport_code || undefined,
+        arrivalAirportCode: f?.arrival_airport_code || undefined,
+        departureDate: f?.departure_date || undefined,
+        departureTime: f?.departure_time || undefined,
+        arrivalTime: f?.arrival_time || undefined,
+        flightClass: f?.class || undefined,
+        availableSeats: f?.available_seats ?? undefined,
+      };
+    }) : [];
+
+    const featuredFlights = flights ? flights.filter(f => f.is_featured && f.is_active).map(flight => {
+      const defaultFares = (flight as any).flight_default_fares || [];
+      const lowestDefaultPrice = defaultFares.length > 0 ? Math.min(...defaultFares.map((f: any) => f.rate || 0)) : undefined;
+      const displayPrice = flight.price && flight.price > 0 ? flight.price : lowestDefaultPrice;
+      const isAirlineLogo = !flight.cover_photo && flight.airline_logo;
+
+      return {
+        id: flight.id,
+        title: `${flight.airline} ${flight.flight_number || ''}`,
+        description: `${flight.departure_city} to ${flight.arrival_city}`,
+        originalPrice: undefined,
+        discountedPrice: displayPrice,
+        discountPercent: undefined,
+        image: flight.cover_photo || flight.airline_logo || 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=600&h=400&fit=crop',
+        isLogo: !!isAirlineLogo,
+        expiresIn: undefined,
+        featured: true,
+        onClick: () => handleBook(flight),
+
+        // Flight details
+        flightNumber: flight.flight_number || undefined,
+        airline: flight.airline || undefined,
+        airlineLogo: flight.airline_logo || undefined,
+        departureCity: flight.departure_city || undefined,
+        arrivalCity: flight.arrival_city || undefined,
+        departureAirportCode: (flight as any).departure_airport_code || undefined,
+        arrivalAirportCode: (flight as any).arrival_airport_code || undefined,
+        departureDate: flight.departure_date || undefined,
+        departureTime: flight.departure_time || undefined,
+        arrivalTime: flight.arrival_time || undefined,
+        flightClass: flight.class || undefined,
+        availableSeats: flight.available_seats ?? undefined,
+      };
+    }) : [];
+
+    return [...deals, ...featuredFlights];
+  }, [activeFlightDeals, flights]);
 
   const handleBook = (flight: Flight, passengerCount?: number, returnFlight?: Flight | null, paxBreakdown?: { adults: number; children: number; infants: number }) => {
     const params = new URLSearchParams({ passengers: String(passengerCount || 1) });
@@ -469,8 +614,9 @@ const Flights = () => {
     try {
       await deleteFlight.mutateAsync(id);
       toast.success("Flight deleted successfully");
-    } catch (error) {
-      toast.error("Failed to delete flight");
+    } catch (error: any) {
+      console.error("Failed to delete flight:", error);
+      toast.error("Failed to delete flight: " + (error?.message || "Unknown error"));
     }
   };
 
@@ -538,7 +684,7 @@ const Flights = () => {
     exportToExcel(rows, "Flights", "flights-export");
   };
 
-  if (flightsError || dealsError) {
+  if (flightsError && !isAbortError(flightsError)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
         <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
@@ -546,7 +692,12 @@ const Flights = () => {
         </div>
         <div className="text-center">
           <h3 className="text-lg font-semibold">Connection Error</h3>
-          <p className="text-muted-foreground">We couldn't reach the server. Please check your connection or try again.</p>
+          <p className="text-muted-foreground">We couldn't reach the server or load flights. Please check your connection or try again.</p>
+          {flightsError && (
+            <p className="text-xs text-destructive mt-2 max-w-md mx-auto">
+              Error details: {flightsError instanceof Error ? flightsError.message : JSON.stringify(flightsError)}
+            </p>
+          )}
         </div>
         <Button onClick={() => window.location.reload()} variant="outline">
           Retry Connection
@@ -608,9 +759,11 @@ const Flights = () => {
 
       {/* Flight Search Section - visible in normal view, on top */}
       {!isManageView && (
-        <FlightSearchSection 
-          onFlightSelect={(flight, passengerCount, returnFlight, paxBreakdown) => handleBook(flight, passengerCount, returnFlight, paxBreakdown)}
-        />
+        <SearchErrorBoundary>
+          <FlightSearchSection 
+            onFlightSelect={(flight, passengerCount, returnFlight, paxBreakdown) => handleBook(flight, passengerCount, returnFlight, paxBreakdown)}
+          />
+        </SearchErrorBoundary>
       )}
 
       {/* Hero Carousel - hidden in manage view */}
@@ -713,17 +866,30 @@ const Flights = () => {
         <Card className="shadow-card">
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by route, airline, or flight number..."
-                  value={adminSearch}
-                  onChange={(e) => {
-                    setAdminSearch(e.target.value);
-                    setFlightPage(1);
-                  }}
-                  className="pl-9 h-9"
-                />
+              <div className="flex items-center gap-3 flex-1">
+                <div className="relative max-w-sm flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by route, airline, or flight number..."
+                    value={adminSearch}
+                    onChange={(e) => {
+                      setAdminSearch(e.target.value);
+                      setFlightPage(1);
+                    }}
+                    className="pl-9 h-9"
+                  />
+                </div>
+                <Select value={tripTypeFilter} onValueChange={(v) => { setTripTypeFilter(v); setFlightPage(1); }}>
+                  <SelectTrigger className="w-[140px] h-9">
+                    <SelectValue placeholder="Trip Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Trips</SelectItem>
+                    <SelectItem value="one_way">One Way</SelectItem>
+                    <SelectItem value="round_trip">Round Trip</SelectItem>
+                    <SelectItem value="multi_city">Multi-City</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
                 <Button 

@@ -87,7 +87,7 @@ export const useAgency = (id: string) => {
         .from("agencies")
         .select("*")
         .eq("id", id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
 
@@ -96,7 +96,7 @@ export const useAgency = (id: string) => {
         .from("profiles")
         .select("email, full_name, phone")
         .eq("id", agency.user_id)
-        .single();
+        .maybeSingle();
 
       return {
         ...agency,
@@ -116,10 +116,10 @@ export const useCreateAgency = () => {
         .from("agencies")
         .insert(agency)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agencies"] });
@@ -137,10 +137,10 @@ export const useUpdateAgency = () => {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agencies"] });
@@ -158,10 +158,10 @@ export const useVerifyAgency = () => {
         .update({ is_verified: isVerified })
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agencies"] });
@@ -179,10 +179,10 @@ export const useToggleAgencyStatus = () => {
         .update({ is_active: isActive })
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agencies"] });
@@ -214,10 +214,10 @@ export const useToggleMfaRequired = () => {
         .update({ mfa_required: mfaRequired } as any)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agencies"] });
@@ -246,10 +246,10 @@ export const useUpdateAgencyCredit = () => {
         } as any)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agencies"] });

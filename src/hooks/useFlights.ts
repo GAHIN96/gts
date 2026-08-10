@@ -47,10 +47,10 @@ export function useCreateFlight() {
         .from("flights")
         .insert(flight)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["flights"] });
@@ -68,10 +68,10 @@ export function useUpdateFlight() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["flights"] });

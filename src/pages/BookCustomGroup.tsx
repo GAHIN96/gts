@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import confetti from "canvas-confetti";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
@@ -46,12 +46,23 @@ const BookCustomGroup = () => {
 
   const { data: outboundFlight } = useFlight(outboundFlightId);
   const { data: returnFlight } = useFlight(returnFlightId);
+
+  // Redirect/Validation: If outbound is a package flight, they MUST book it with a return flight.
+  useEffect(() => {
+    if (outboundFlight) {
+      const isPackage = outboundFlight.trip_type === "round_trip" || outboundFlight.linked_flight_id;
+      if (isPackage && !returnFlightId) {
+        toast.error("This flight is part of a round-trip package deal and cannot be booked individually.");
+        navigate("/packages");
+      }
+    }
+  }, [outboundFlight, returnFlightId, navigate]);
   const { data: hotel } = useHotel(hotelId);
   const { data: transfer } = useQuery({
     queryKey: ["transfer", transferId],
     queryFn: async () => {
       if (!transferId) return null;
-      const { data, error } = await supabase.from("transfers").select("*").eq("id", transferId).single();
+      const { data, error } = await supabase.from("transfers").select("*").eq("id", transferId).maybeSingle();
       if (error) return null;
       return data;
     },

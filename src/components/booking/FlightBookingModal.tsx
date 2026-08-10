@@ -1,3 +1,4 @@
+import { formatCurrency } from '@/utils/currency';
 import { useState, useCallback } from "react";
 import { Loader2, Plane, MapPin, Calendar, Clock, Users, ArrowLeft, ShieldAlert, Lock, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ export function FlightBookingModal({ open, onOpenChange, flight, initialPassenge
           passportNumber: p.passportNumber,
           passportExpiry: p.passportExpiry,
           dateOfBirth: p.dateOfBirth,
+          nationality: p.nationality,
           documents: p.documents || [],
           isLead: index === 0,
         })),
@@ -188,11 +190,11 @@ export function FlightBookingModal({ open, onOpenChange, flight, initialPassenge
           </div>
           <div className="text-right">
             <p className="text-sm text-muted-foreground">{passengerCount} traveler{passengerCount > 1 ? "s" : ""}</p>
-            <p className="text-2xl font-bold text-primary">${totalPrice}</p>
+            <p className="text-2xl font-bold text-primary">{formatCurrency(totalPrice, flight.currency)}</p>
             {hasTieredDiscount && (
               <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 justify-end">
                 <Layers className="h-3 w-3" />
-                Tiered: ${effectivePrice}/seat
+                Tiered: {formatCurrency(effectivePrice, flight.currency)}/seat
               </p>
             )}
             {passengerCount > 1 && !hasTieredDiscount && (
@@ -278,7 +280,7 @@ export function FlightBookingModal({ open, onOpenChange, flight, initialPassenge
                 <div className="space-y-2 pt-3 border-t border-primary/20">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Base price per person</span>
-                    <span className={`font-medium ${hasTieredDiscount ? "line-through text-muted-foreground" : ""}`}>${flight.price}</span>
+                    <span className={`font-medium ${hasTieredDiscount ? "line-through text-muted-foreground" : ""}`}>{formatCurrency(flight.price, flight.currency)}</span>
                   </div>
                   {hasTieredDiscount && (
                     <div className="flex justify-between text-sm">
@@ -286,7 +288,7 @@ export function FlightBookingModal({ open, onOpenChange, flight, initialPassenge
                         <Layers className="h-3 w-3" />
                         Tiered price ({passengerCount} pax)
                       </span>
-                      <span className="font-medium text-emerald-600 dark:text-emerald-400">${effectivePrice}</span>
+                      <span className="font-medium text-emerald-600 dark:text-emerald-400">{formatCurrency(effectivePrice, flight.currency)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm">
@@ -297,7 +299,7 @@ export function FlightBookingModal({ open, onOpenChange, flight, initialPassenge
 
                 <div className="flex justify-between items-center pt-3 border-t border-primary/20 bg-primary/10 -mx-5 -mb-5 px-5 py-4 rounded-b-2xl">
                   <span className="font-semibold">Total Amount</span>
-                  <span className="text-2xl font-bold text-primary">${totalPrice}</span>
+                  <span className="text-2xl font-bold text-primary">{formatCurrency(totalPrice, flight.currency)}</span>
                 </div>
               </div>
             </div>

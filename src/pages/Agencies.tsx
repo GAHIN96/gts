@@ -3,8 +3,9 @@ import { format } from "date-fns";
 import {
   Plus, Search, Building2, Mail, Phone, MapPin, Eye, Edit,
   MoreVertical, CheckCircle, XCircle, Shield, ShieldOff, Key,
-  Trash2, Landmark, Loader2, User, CreditCard, ShieldCheck, Upload, Image as ImageIcon
+  Trash2, Landmark, Loader2, User, CreditCard, ShieldCheck, Upload, Image as ImageIcon, FileText
 } from "lucide-react";
+import { generateStatementOfAccountPdf } from "@/utils/statementOfAccountPdf";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -232,6 +233,63 @@ const Agencies = () => {
     }
   };
 
+  const handleDownloadSOA = async (agency: Agency) => {
+    try {
+      toast.info(`Generating Statement of Account for ${agency.agency_name}...`);
+
+      // Fetch bookings for this agency
+      const { data: bookings } = await supabase
+        .from("bookings")
+        .select("id, booking_number, total_amount, created_at, status, booking_type")
+        .eq("user_id", agency.user_id)
+        .order("created_at", { ascending: true });
+
+      const txs: any[] = [];
+      let runningBal = 0;
+      let totalDebits = 0;
+      let totalCredits = 0;
+
+      (bookings || []).forEach((b) => {
+        const amt = Number(b.total_amount) || 0;
+        runningBal += amt;
+        totalDebits += amt;
+        txs.push({
+          date: new Date(b.created_at),
+          reference: b.booking_number,
+          type: "booking",
+          description: `${b.booking_type.toUpperCase()} Booking (#${b.booking_number})`,
+          debit: amt,
+          credit: 0,
+          balance: runningBal,
+        });
+      });
+
+      const usedCredit = (agency as any).used_credit || 0;
+      const creditLimit = (agency as any).credit_limit || 0;
+
+      await generateStatementOfAccountPdf({
+        agencyName: agency.agency_name,
+        licenseNumber: agency.license_number || undefined,
+        contactEmail: agency.profiles?.email || undefined,
+        contactPhone: agency.profiles?.phone || undefined,
+        address: [agency.address, agency.city, agency.country].filter(Boolean).join(", "),
+        statementPeriod: format(new Date(), "MMMM yyyy"),
+        openingBalance: 0,
+        totalDebits,
+        totalCredits,
+        closingBalance: usedCredit || runningBal,
+        creditLimit,
+        creditLimitType: (agency as any).credit_limit_type || "soft",
+        transactions: txs,
+      });
+
+      toast.success("Statement of Account PDF downloaded!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to generate Statement of Account");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -368,9 +426,12 @@ const Agencies = () => {
                               <MoreVertical className="h-3.5 w-3.5" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuContent align="end" className="w-52">
                             <DropdownMenuItem onClick={() => { setSelectedAgency(agency); setDetailsOpen(true); }} className="text-xs">
                               <Eye className="h-3.5 w-3.5 mr-2" /> View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDownloadSOA(agency)} className="text-xs">
+                              <FileText className="h-3.5 w-3.5 mr-2 text-primary" /> Statement of Account
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEdit(agency)} className="text-xs">
                               <Edit className="h-3.5 w-3.5 mr-2" /> Edit Agency

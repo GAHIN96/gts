@@ -1443,9 +1443,16 @@ const BookingDetail = () => {
                       </Button>
                     )}
                     
+                    <Button 
+                      className="w-full rounded-2xl h-14 gap-4 font-bold uppercase tracking-widest bg-slate-900 text-amber-500 hover:bg-slate-800 shadow-xl transition-all border-b-4 border-slate-950" 
+                      onClick={() => setPreviewOpen(true)}
+                    >
+                      <Eye className="h-5 w-5 text-amber-500" /> Preview & Download Voucher
+                    </Button>
+
                     {booking.status === "confirmed" && (
                       <Button className="w-full rounded-2xl h-14 gap-4 font-bold uppercase tracking-widest bg-emerald-600 text-white shadow-2xl shadow-emerald-200 hover:bg-emerald-700 hover:scale-[1.02] transition-all border-b-4 border-emerald-800" onClick={sendVoucherEmail}>
-                        <Mail className="h-5 w-5" /> Send Voucher
+                        <Mail className="h-5 w-5" /> Send Voucher Email
                       </Button>
                     )}
 

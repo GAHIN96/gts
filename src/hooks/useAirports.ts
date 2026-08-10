@@ -82,7 +82,7 @@ export function useAirports() {
 
       // 2. Ensure Cities exist
       for (const city of regionalCities) {
-        const { data: existing } = await supabase.from('cities').select('id').eq('name', city.name).eq('country', city.country).single();
+        const { data: existing } = await supabase.from('cities').select('id').eq('name', city.name).eq('country', city.country);
         if (!existing) {
           await supabase.from('cities').insert({ ...city, is_active: true });
         }
@@ -95,7 +95,7 @@ export function useAirports() {
       for (const airport of regionalAirports) {
         const city = allCities?.find(c => c.name === airport.cityName && c.country === airport.country);
         if (city) {
-          const { data: existing } = await supabase.from('airports').select('id').eq('code', airport.code).single();
+          const { data: existing } = await supabase.from('airports').select('id').eq('code', airport.code).maybeSingle();
           if (!existing) {
             await (supabase as any).from('airports').insert({
               name: airport.name,

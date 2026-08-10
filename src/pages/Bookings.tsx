@@ -108,16 +108,19 @@ const bookingTypeConfig: Record<string, { label: string; icon: React.ElementType
 };
 
 const Bookings = () => {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { data: bookings, isLoading } = useBookings();
-  const updateBooking = useUpdateBooking();
-  const deleteBooking = useDeleteBooking();
 
   const isAdmin = role === "admin";
   const isFinance = role === "finance";
   const canManage = isAdmin || isFinance;
+
+  const { data: bookings, isLoading } = useBookings({
+    userId: canManage ? undefined : user?.id,
+  });
+  const updateBooking = useUpdateBooking();
+  const deleteBooking = useDeleteBooking();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");

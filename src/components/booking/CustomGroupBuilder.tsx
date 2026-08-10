@@ -314,7 +314,7 @@ export function CustomGroupBuilder() {
     return map;
   }, [allFlights, originCity, destinationCity]);
 
-  const outboundFlights = useMemo(() => {
+  const allOutboundFlights = useMemo(() => {
     if (!allFlights || !departureDate || !originCity || !destinationCity) return [];
     const depStr = format(departureDate, "yyyy-MM-dd");
     return allFlights.filter(f =>
@@ -325,7 +325,7 @@ export function CustomGroupBuilder() {
     );
   }, [allFlights, departureDate, originCity, destinationCity]);
 
-  const returnFlights = useMemo(() => {
+  const allReturnFlights = useMemo(() => {
     if (!allFlights || !returnDate || !originCity || !destinationCity) return [];
     const retStr = format(returnDate, "yyyy-MM-dd");
     return allFlights.filter(f =>
@@ -335,6 +335,113 @@ export function CustomGroupBuilder() {
       f.departure_date === retStr
     );
   }, [allFlights, returnDate, originCity, destinationCity]);
+
+  const outboundFlights = useMemo(() => {
+    // 1. If we have a selected return package flight, show only its linked outbound flight!
+    if (selectedReturnFlight && (selectedReturnFlight.trip_type === "round_trip" || selectedReturnFlight.linked_flight_id)) {
+      let linkedOutbound = allOutboundFlights.find(f => f.id === selectedReturnFlight.linked_flight_id);
+      if (!linkedOutbound) linkedOutbound = allOutboundFlights.find(f => f.linked_flight_id === selectedReturnFlight.id);
+      if (!linkedOutbound && selectedReturnFlight.trip_type === "round_trip") {
+        linkedOutbound = allOutboundFlights.find(f => (f.trip_type === "round_trip" || f.linked_flight_id) && f.airline === selectedReturnFlight.airline);
+      }
+      return linkedOutbound ? [linkedOutbound] : [];
+    }
+
+    // 2. If we have a selected return flight but it is NOT a package flight:
+    // The outbound flight cannot be a package flight.
+    if (selectedReturnFlight) {
+      const filtered = allOutboundFlights.filter(f => f.trip_type !== "round_trip" && !f.linked_flight_id);
+      if (selectedOutboundFlight) {
+        return filtered.filter(f => f.id === selectedOutboundFlight.id);
+      }
+      return filtered;
+    }
+
+    // 3. If no return flight is selected yet:
+    if (selectedOutboundFlight) {
+      return allOutboundFlights.filter(f => f.id === selectedOutboundFlight.id);
+    }
+
+    return allOutboundFlights;
+  }, [allOutboundFlights, selectedOutboundFlight, selectedReturnFlight]);
+
+  const returnFlights = useMemo(() => {
+    // 1. If we have a selected outbound package flight, show only its linked return flight!
+    if (selectedOutboundFlight && (selectedOutboundFlight.trip_type === "round_trip" || selectedOutboundFlight.linked_flight_id)) {
+      let linkedReturn = allReturnFlights.find(f => f.id === selectedOutboundFlight.linked_flight_id);
+      if (!linkedReturn) linkedReturn = allReturnFlights.find(f => f.linked_flight_id === selectedOutboundFlight.id);
+      if (!linkedReturn && selectedOutboundFlight.trip_type === "round_trip") {
+        linkedReturn = allReturnFlights.find(f => (f.trip_type === "round_trip" || f.linked_flight_id) && f.airline === selectedOutboundFlight.airline);
+      }
+      return linkedReturn ? [linkedReturn] : [];
+    }
+
+    // 2. If we have a selected outbound flight but it is NOT a package flight:
+    // The return flight cannot be a package flight.
+    if (selectedOutboundFlight) {
+      const filtered = allReturnFlights.filter(f => f.trip_type !== "round_trip" && !f.linked_flight_id);
+      if (selectedReturnFlight) {
+        return filtered.filter(f => f.id === selectedReturnFlight.id);
+      }
+      return filtered;
+    }
+
+    // 3. If no outbound flight is selected yet:
+    if (selectedReturnFlight) {
+      return allReturnFlights.filter(f => f.id === selectedReturnFlight.id);
+    }
+
+    // Since it's round-trip building, by default, hide return package flights to ensure they select from outbound or select outbound first.
+    return allReturnFlights.filter(f => f.trip_type !== "round_trip" && !f.linked_flight_id);
+  }, [allReturnFlights, selectedReturnFlight, selectedOutboundFlight]);
+
+  const handleSelectOutbound = useCallback((flight: Flight) => {
+    if (selectedOutboundFlight?.id === flight.id) {
+      setSelectedOutboundFlight(null);
+      if (flight.trip_type === "round_trip" || flight.linked_flight_id) {
+        setSelectedReturnFlight(null);
+      }
+      return;
+    }
+
+    setSelectedOutboundFlight(flight);
+
+    const isExplicitOutbound = flight.trip_type === "round_trip" || flight.linked_flight_id;
+    if (isExplicitOutbound) {
+      let linkedReturn = allReturnFlights.find(f => f.id === flight.linked_flight_id);
+      if (!linkedReturn) linkedReturn = allReturnFlights.find(f => f.linked_flight_id === flight.id);
+      if (!linkedReturn && flight.trip_type === "round_trip") {
+        linkedReturn = allReturnFlights.find(f => (f.trip_type === "round_trip" || f.linked_flight_id) && f.airline === flight.airline);
+      }
+      if (linkedReturn) {
+        setSelectedReturnFlight(linkedReturn);
+      }
+    }
+  }, [allReturnFlights, selectedOutboundFlight]);
+
+  const handleSelectReturn = useCallback((flight: Flight) => {
+    if (selectedReturnFlight?.id === flight.id) {
+      setSelectedReturnFlight(null);
+      if (flight.trip_type === "round_trip" || flight.linked_flight_id) {
+        setSelectedOutboundFlight(null);
+      }
+      return;
+    }
+
+    setSelectedReturnFlight(flight);
+
+    const isExplicitReturn = flight.trip_type === "round_trip" || flight.linked_flight_id;
+    if (isExplicitReturn) {
+      let linkedOutbound = allOutboundFlights.find(f => f.id === flight.linked_flight_id);
+      if (!linkedOutbound) linkedOutbound = allOutboundFlights.find(f => f.linked_flight_id === flight.id);
+      if (!linkedOutbound && flight.trip_type === "round_trip") {
+        linkedOutbound = allOutboundFlights.find(f => (f.trip_type === "round_trip" || f.linked_flight_id) && f.airline === flight.airline);
+      }
+      if (linkedOutbound) {
+        setSelectedOutboundFlight(linkedOutbound);
+      }
+    }
+  }, [allOutboundFlights, selectedReturnFlight]);
 
   // Determine required room types from guest configuration
   const requiredRoomTypes = useMemo(() => {
@@ -750,11 +857,6 @@ export function CustomGroupBuilder() {
       return ah < dh;
     })();
 
-    const accentText = isReturn ? "text-emerald-600 dark:text-emerald-400" : "text-primary";
-    const accentBg = isReturn ? "bg-emerald-500" : "bg-primary";
-    const accentSoft = isReturn ? "bg-emerald-500/10" : "bg-primary/10";
-    const accentBorder = isReturn ? "border-emerald-500/25" : "border-primary/25";
-
     return (
       <motion.button
         key={f.id}
@@ -764,175 +866,90 @@ export function CustomGroupBuilder() {
         className={cn(
           "w-full rounded-2xl text-left transition-all duration-300 group overflow-hidden relative",
           isSelected
-            ? isReturn
-              ? "border-2 border-emerald-500 bg-card shadow-2xl shadow-emerald-500/15 ring-1 ring-emerald-500/20"
-              : "border-2 border-primary bg-card shadow-2xl shadow-primary/15 ring-1 ring-primary/20"
-            : "border border-border/60 hover:border-primary/40 hover:shadow-xl bg-card"
+            ? "border-[1.5px] border-[#2A3F8B] shadow-md bg-white"
+            : "border-border/60 hover:border-[#2A3F8B]/40 shadow-sm bg-white hover:shadow-xl"
         )}
       >
-        {/* Selected shimmer */}
-        {isSelected && (
-          <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
-            <div className={cn(
-              "absolute -inset-x-1/2 top-0 h-px opacity-60",
-              isReturn ? "bg-gradient-to-r from-transparent via-emerald-400 to-transparent" : "bg-gradient-to-r from-transparent via-primary to-transparent"
-            )} />
+        <div className="absolute top-0 right-0 border-t-[30px] border-l-[30px] border-t-[#2A3F8B] border-l-transparent z-10 pointer-events-none" />
+
+        <div className="pt-5 px-6 pb-0 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge className="bg-[#E2E8F0] text-[#2A3F8B] border-0 font-bold px-3 py-0.5 rounded-full text-[11px] shadow-none">
+              {isReturn ? "Return" : "Outbound"} Flight • {f.departure_date ? format(new Date(f.departure_date), "EEE, d MMM yyyy") : "Date TBD"}
+            </Badge>
           </div>
-        )}
+        </div>
 
-        {/* Top accent bar */}
-        <div className={cn(
-          "h-1 w-full",
-          isReturn
-            ? "bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600"
-            : "bg-gradient-to-r from-primary/70 via-primary to-primary/70"
-        )} />
-
-        {/* Selected pill */}
-        {isSelected && (
-          <div className="absolute top-3 right-3 z-10">
-            <div className={cn(
-              "px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-lg backdrop-blur-md",
-              isReturn ? "bg-emerald-500 text-white" : "bg-primary text-primary-foreground"
-            )}>
-              <Check className="h-3 w-3" strokeWidth={3} />
-              <span className="text-[9px] font-extrabold uppercase tracking-[0.12em]">Selected</span>
-            </div>
-          </div>
-        )}
-
-        <div className="p-5 relative">
-          {/* Row 1: Airline info + badges */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3.5">
-              {f.airline_logo ? (
-                <div className={cn(
-                  "h-14 w-14 rounded-2xl p-2 flex items-center justify-center border shadow-sm bg-white dark:bg-card",
-                  isReturn ? "border-emerald-500/25" : "border-primary/20"
-                )}>
-                  <img src={f.airline_logo} alt={f.airline} className="h-full w-full object-contain" />
-                </div>
-              ) : (
-                <div className={cn(
-                  "h-14 w-14 rounded-2xl flex items-center justify-center border shadow-sm",
-                  accentSoft, accentBorder
-                )}>
-                  {isReturn
-                    ? <PlaneLandingIcon className="h-6 w-6 text-emerald-600 dark:text-emerald-400" size={24} />
-                    : <PlaneTakeoffIcon className="h-6 w-6 text-primary" size={24} />
-                  }
-                </div>
-              )}
-              <div>
-                <p className="font-bold text-foreground text-[15px] tracking-tight font-heading leading-tight">{f.airline}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={cn(
-                    "text-[10px] font-sans font-medium font-bold tracking-wider px-2 py-0.5 rounded-md border",
-                    isReturn
-                      ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20"
-                      : "bg-primary/5 text-primary border-primary/15"
-                  )}>
-                    {f.flight_number || "TBD"}
-                  </span>
-                  <Badge variant="secondary" className="text-[9px] uppercase tracking-[0.1em] font-bold px-2 py-0.5 rounded-md bg-muted text-foreground/80">
-                    {f.class || "Economy"}
-                  </Badge>
-                  {insufficientSeats && (
-                    <Badge variant="destructive" className="text-[9px] font-bold px-2 py-0.5 rounded-md animate-pulse">
-                      ⚠ Need {passengerCount}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: Premium route timeline */}
-          <div className={cn(
-            "rounded-2xl px-5 py-4 border bg-gradient-to-br from-muted/40 via-muted/20 to-transparent",
-            isReturn ? "border-emerald-500/20" : "border-primary/15"
-          )}>
-            <div className="flex items-center gap-4">
-              {/* Departure */}
-              <div className="text-left min-w-[70px]">
-                <p className="text-[26px] font-bold text-foreground tracking-tight font-heading leading-none tabular-nums">
-                  {f.departure_time?.slice(0, 5) || "—"}
-                </p>
-                <p className={cn(
-                  "text-[11px] font-extrabold uppercase tracking-[0.18em] mt-1.5",
-                  accentText
-                )}>{depCode}</p>
-              </div>
-
-              {/* Timeline */}
-              <div className="flex-1 flex flex-col items-center px-2 gap-1.5">
-                {duration && (
-                  <span className="text-[10px] text-muted-foreground/80 font-bold uppercase tracking-[0.15em] flex items-center gap-1">
-                    <Timer className="h-2.5 w-2.5" />
-                    {duration}
-                  </span>
+        <div className="flex flex-col sm:flex-row items-stretch">
+          <div className="flex-1 p-6">
+            <div className="flex items-center gap-5">
+              <div className="shrink-0 w-20 h-20 rounded-xl bg-white border border-border/60 shadow-sm flex items-center justify-center p-2">
+                {f.airline_logo ? (
+                  <img src={f.airline_logo} alt={f.airline} className="max-h-full max-w-full object-contain" />
+                ) : (
+                  isReturn ? <PlaneLandingIcon className="h-10 w-10 text-[#2A3F8B]" /> : <PlaneTakeoffIcon className="h-10 w-10 text-[#2A3F8B]" />
                 )}
-                <div className="w-full relative flex items-center">
-                  <div className={cn("w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-card shadow-sm", accentBg)} />
-                  <div className={cn("flex-1 h-[2px]", isReturn ? "bg-emerald-500/25" : "bg-primary/25")} />
-                  <div className={cn(
-                    "w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-md border-2 bg-card",
-                    isReturn ? "border-emerald-500/40" : "border-primary/40"
-                  )}>
-                    {isReturn
-                      ? <PlaneLandingIcon className="text-emerald-600 dark:text-emerald-400" size={16} />
-                      : <PlaneTakeoffIcon className="text-primary" size={16} />
-                    }
-                  </div>
-                  <div className={cn("flex-1 h-[2px]", isReturn ? "bg-emerald-500/25" : "bg-primary/25")} />
-                  <div className={cn("w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-card shadow-sm", accentBg)} />
-                </div>
-                <span className="text-[9px] text-muted-foreground/70 font-bold uppercase tracking-[0.18em]">Direct</span>
               </div>
 
-              {/* Arrival */}
-              <div className="text-right min-w-[70px]">
-                <div className="flex items-baseline justify-end gap-0.5">
-                  <p className="text-[26px] font-bold text-foreground tracking-tight font-heading leading-none tabular-nums">
-                    {f.arrival_time?.slice(0, 5) || "—"}
+              <div className="flex items-center justify-between gap-6 flex-1">
+                <div className="text-left min-w-[70px]">
+                  <p className="text-2xl font-bold tracking-tight text-foreground leading-none">{f.departure_time?.slice(0, 5) || "—"}</p>
+                  <p className="text-xs font-semibold text-muted-foreground mt-1 flex items-center gap-1 tracking-wide">
+                    {depCode}
                   </p>
-                  {isNextDay && (
-                    <span className={cn("text-[10px] font-extrabold", accentText)}>+1</span>
-                  )}
                 </div>
-                <p className={cn(
-                  "text-[11px] font-extrabold uppercase tracking-[0.18em] mt-1.5",
-                  accentText
-                )}>{arrCode}</p>
+
+                <div className="flex-1 max-w-xs flex items-center mt-2">
+                  <div className="h-[1.5px] flex-1 bg-border/60" />
+                  <div className="bg-white px-3 py-1 text-[10px] font-bold tracking-wider text-[#2A3F8B] border border-border/60 rounded-full flex items-center gap-1 whitespace-nowrap shadow-sm mx-2">
+                    <span className="text-muted-foreground">{duration || "1h 30m"}</span>
+                    <span className="text-[#2A3F8B]">DIRECT</span>
+                  </div>
+                  <div className="h-[1.5px] flex-1 bg-border/60" />
+                </div>
+
+                <div className="text-right min-w-[70px]">
+                  <div className="flex items-baseline justify-end gap-0.5">
+                    <p className="text-2xl font-bold tracking-tight text-foreground leading-none">{f.arrival_time?.slice(0, 5) || "—"}</p>
+                    {isNextDay && <span className="text-[10px] font-extrabold text-[#2A3F8B]">+1</span>}
+                  </div>
+                  <p className="text-xs font-semibold text-muted-foreground mt-1 flex items-center justify-end gap-1 tracking-wide">
+                    {arrCode}
+                  </p>
+                </div>
               </div>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-muted-foreground pt-4 ml-[100px]">
+              <span className="font-semibold text-foreground/80">{f.airline}</span>
+              {f.flight_number && (
+                <span className="px-2 py-0.5 rounded bg-muted text-[10px] font-mono font-bold text-foreground/70">{f.flight_number}</span>
+              )}
+              {f.class && <span>• {f.class}</span>}
+              <span>• 23kg</span>
+              {seatsLow && (
+                <Badge className="bg-destructive/10 text-destructive border-0 font-semibold px-2 py-0.5 rounded-full text-[10px] animate-pulse shadow-none">
+                  Only {f.available_seats} seats left
+                </Badge>
+              )}
+              {insufficientSeats && (
+                <Badge variant="destructive" className="text-[9px] font-bold px-2 py-0.5 rounded-md animate-pulse">
+                  ⚠ Need {passengerCount}
+                </Badge>
+              )}
             </div>
           </div>
 
-          {/* Row 3: Footer — seats, amenities, price */}
-          <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/40">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant={seatsLow ? "destructive" : "outline"} className={cn(
-                "text-[10px] font-bold rounded-lg px-2.5 py-1",
-                seatsLow && "animate-pulse",
-                !seatsLow && "border-border/60 text-foreground/80 bg-muted/40"
-              )}>
-                <Users className="h-3 w-3 mr-1.5" />
-                {seatsLow ? `Only ${f.available_seats} left` : `${f.available_seats} seats`}
-              </Badge>
-              <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-muted/40 border border-border/40">
-                <Luggage className="h-3 w-3" /> 20kg
-              </span>
-              <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-muted/40 border border-border/40">
-                🍽 Meal
-              </span>
-            </div>
+          <div className="sm:border-l border-t sm:border-t-0 border-border/40 bg-white p-6 flex flex-col justify-center items-end sm:w-[180px] shrink-0">
             <div className="text-right">
-              <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-[0.15em] leading-none">From</p>
-              <p className={cn(
-                "text-xl font-bold leading-tight tracking-tight",
-                accentText
-              )}>${f.price}<span className="text-[10px] text-muted-foreground font-semibold ml-1">/pax</span></p>
+              <p className="text-3xl font-black text-[#2A3F8B] leading-none tabular-nums">${f.price}</p>
+              <p className="text-xs text-muted-foreground mt-1.5 font-medium">per person</p>
             </div>
+            {isSelected && (
+              <Badge className="bg-[#2A3F8B] text-white border-0 font-bold px-4 py-1.5 rounded-full text-xs mt-4 shadow-sm">
+                <Check className="h-3.5 w-3.5 mr-1" /> Selected
+              </Badge>
+            )}
           </div>
         </div>
       </motion.button>
@@ -944,253 +961,69 @@ export function CustomGroupBuilder() {
 
   return (
     <div className="relative max-w-[1400px] mx-auto px-4 md:px-6 pt-4 pb-8">
-      {/* ═══ Bounded Cinematic Hero Band ═══ */}
-      <motion.div
-        className="relative h-[160px] md:h-[200px] rounded-3xl overflow-hidden mb-5 shadow-[0_24px_60px_-28px_hsl(var(--primary)/0.45)] ring-1 ring-white/10"
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <motion.img
-          src={destCityImage || customGroupHeroImg}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover"
-          initial={{ scale: 1.08 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] }}
-        />
-        {/* Layered gradients for depth */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/15" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-transparent to-black/30" />
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(circle at 18% 35%, hsl(var(--primary) / 0.35), transparent 55%), radial-gradient(circle at 85% 70%, hsl(210 80% 55% / 0.28), transparent 55%)",
-          }}
-        />
-        {/* Faint grain */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-[0.06] mix-blend-overlay"
-          style={{
-            backgroundImage:
-              "radial-gradient(rgba(255,255,255,0.7) 1px, transparent 1px)",
-            backgroundSize: "3px 3px",
-          }}
-        />
-        {/* Inner vignette ring */}
-        <div className="absolute inset-0 rounded-3xl pointer-events-none ring-1 ring-inset ring-white/10" />
-        {/* Bottom fade into stepper */}
-        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-background/40 pointer-events-none" />
 
-        <div className="relative h-full flex flex-col justify-center p-5 md:p-7">
-          {/* Eyebrow chip */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.45 }}
-            className="inline-flex items-center gap-2 mb-2 px-2.5 py-1 rounded-full bg-white/5 backdrop-blur-md border border-white/10 w-fit"
-          >
-            <Compass className="h-3 w-3" style={{ color: "hsl(42 95% 65%)" }} />
-            <span
-              className="text-[9px] font-bold uppercase tracking-[0.25em] bg-clip-text text-transparent"
-              style={{
-                backgroundImage:
-                  "linear-gradient(90deg, hsl(42 95% 70%), hsl(42 95% 90%), hsl(42 95% 70%))",
-              }}
-            >
-              Tailored Experience
-            </span>
-          </motion.div>
 
-          <h2 className="text-2xl md:text-4xl font-bold tracking-tight font-heading leading-[1.05] drop-shadow-[0_2px_18px_rgba(0,0,0,0.6)]">
-            <span className="bg-gradient-to-r from-white via-white to-sky-100/90 bg-clip-text text-transparent">
-              Build Your Own{" "}
-            </span>
-            <span
-              className="bg-clip-text text-transparent"
-              style={{
-                backgroundImage:
-                  "linear-gradient(90deg, hsl(var(--primary)) 0%, #fff 45%, hsl(210 80% 65%) 100%)",
-                WebkitBackgroundClip: "text",
-              }}
-            >
-              Journey
-            </span>
-          </h2>
-          {/* Gold hairline */}
-          <div
-            className="mt-2 h-[2px] w-20 rounded-full"
-            style={{
-              background:
-                "linear-gradient(90deg, transparent 0%, hsl(42 95% 60%) 35%, hsl(42 95% 78%) 50%, hsl(42 95% 60%) 65%, transparent 100%)",
-              boxShadow: "0 0 14px hsl(42 95% 60% / 0.55)",
-            }}
-          />
+      {/* ═══ Premium Timeline Stepper ═══ */}
+      <div className="relative pb-10 mt-6">
+        <div className="relative max-w-4xl mx-auto px-4 md:px-0">
+          {/* Progress rail background */}
+          <div className="absolute left-[8%] right-[8%] top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 pointer-events-none" />
+          
+          {/* Progress rail active */}
+          <div className="absolute left-[8%] right-[8%] top-1/2 -translate-y-1/2 h-1.5 rounded-full pointer-events-none overflow-hidden">
+            <motion.div
+              className="h-full bg-gradient-to-r from-blue-600 via-primary to-indigo-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+              initial={false}
+              animate={{ width: `${(step / (STEPS.length - 1)) * 100}%` }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            />
+          </div>
 
-          {/* Floating live stat pills (desktop) — compact horizontal */}
-          <div className="hidden lg:flex items-center gap-2 absolute right-6 top-1/2 -translate-y-1/2">
-            {[
-              {
-                label: "Destination",
-                value: destinationCity?.name || "Not set",
-                icon: MapPin,
-              },
-              {
-                label: "Dates",
-                value:
-                  departureDate && returnDate
-                    ? `${format(departureDate, "dd/MM")} → ${format(returnDate, "dd/MM")}`
-                    : "Pick dates",
-                icon: CalendarIcon,
-              },
-              {
-                label: "Travelers",
-                value: `${passengerCount} ${passengerCount === 1 ? "guest" : "guests"}`,
-                icon: Users,
-              },
-            ].map((pill, idx) => {
-              const Icon = pill.icon;
+          <div className="relative flex items-center justify-between">
+            {STEPS.map((s, i) => {
+              const isActive = i === step;
+              const isDone = i < step;
               return (
-                <motion.div
-                  key={pill.label}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.25 + idx * 0.06, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_6px_18px_-8px_rgba(0,0,0,0.5)]"
+                <button
+                  key={i}
+                  onClick={() => i < step && goToStep(i)}
+                  disabled={i > step}
+                  className="group relative flex flex-col items-center gap-2 disabled:cursor-not-allowed outline-none"
                 >
-                  <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-white/15 ring-1 ring-white/20">
-                    <Icon className="h-3.5 w-3.5 text-white" />
-                  </span>
-                  <div className="flex flex-col leading-tight">
-                    <span className="text-[8px] font-bold uppercase tracking-[0.18em] text-white/60">
-                      {pill.label}
-                    </span>
-                    <span className="text-xs font-bold text-white truncate max-w-[120px]">
-                      {pill.value}
+                  <div 
+                    className={cn(
+                      "relative flex items-center justify-center h-12 w-12 rounded-full transition-all duration-500 z-10 border-4 border-white dark:border-card",
+                      isActive && "bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-[0_0_0_4px_rgba(59,130,246,0.15)] scale-110",
+                      isDone && "bg-gradient-to-br from-emerald-500 to-teal-600 text-white hover:scale-105 cursor-pointer shadow-md",
+                      !isActive && !isDone && "bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-slate-700"
+                    )}
+                  >
+                    {isActive && (
+                      <motion.div 
+                        className="absolute inset-0 rounded-full border border-blue-400/50"
+                        animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                    )}
+                    {isDone ? <Check className="h-5 w-5" strokeWidth={3} /> : <span className="text-sm font-bold">{i + 1}</span>}
+                  </div>
+                  <div className="absolute top-14 flex flex-col items-center min-w-[120px]">
+                    <span
+                      className={cn(
+                        "text-[11px] font-bold uppercase tracking-widest whitespace-nowrap transition-colors duration-300",
+                        isActive ? "text-indigo-700 dark:text-indigo-400" : isDone ? "text-slate-600 dark:text-slate-300" : "text-slate-400 dark:text-slate-500"
+                      )}
+                    >
+                      {s.label}
                     </span>
                   </div>
-                </motion.div>
+                </button>
               );
             })}
           </div>
         </div>
-      </motion.div>
-
-      {/* ═══ Premium Pill Stepper ═══ */}
-      <div className="relative pb-6">
-        <div className="rounded-2xl bg-white dark:bg-card border border-border/60 ring-1 ring-primary/10 shadow-[0_18px_50px_-18px_rgba(0,0,0,0.22)] p-4 md:p-5 bg-gradient-to-r from-primary/[0.06] via-transparent to-accent/[0.06]">
-          {/* Progress rail behind pills */}
-          <div className="relative">
-            <div className="absolute left-6 right-6 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-muted/70 overflow-hidden pointer-events-none">
-              <motion.div
-                className="h-full rounded-full"
-                style={{
-                  background:
-                    "linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(280 45%, 50%) 50%, hsl(210 75% 50%) 100%)",
-                  boxShadow: "0 0 12px hsl(var(--primary) / 0.5)",
-                }}
-                initial={false}
-                animate={{ width: `${(step / (STEPS.length - 1)) * 100}%` }}
-                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-              />
-            </div>
-
-            <div className="relative flex items-center">
-              {STEPS.map((s, i) => {
-                const isActive = i === step;
-                const isDone = i < step;
-                return (
-                  <div key={i} className="flex items-center flex-1 last:flex-none">
-                    <button
-                      onClick={() => i < step && goToStep(i)}
-                      disabled={i > step}
-                      className={cn(
-                        "group relative flex items-center gap-2.5 px-3 md:px-4 py-2.5 rounded-xl transition-all duration-300 disabled:cursor-not-allowed overflow-hidden",
-                        isActive && "bg-gradient-to-r from-[hsl(5,55%,48%)] via-[hsl(280,40%,45%)] to-[hsl(210,75%,50%)] shadow-[0_10px_28px_-6px_hsl(var(--primary)/0.6)]",
-                        isDone && "bg-emerald-500/15 hover:bg-emerald-500/25 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_-6px_rgba(16,185,129,0.4)] cursor-pointer ring-1 ring-emerald-400/40",
-                        !isActive && !isDone && "bg-muted/60 hover:bg-muted"
-                      )}
-                    >
-                      {/* Active shimmer sweep */}
-                      {isActive && (
-                        <motion.span
-                          aria-hidden
-                          className="absolute inset-y-0 w-1/3 pointer-events-none"
-                          style={{
-                            background:
-                              "linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent)",
-                          }}
-                          animate={{ x: ["-120%", "320%"] }}
-                          transition={{ duration: 3.2, repeat: Infinity, ease: "linear", repeatDelay: 1.2 }}
-                        />
-                      )}
-                      {/* Number / Check badge */}
-                      <span className="relative flex items-center justify-center h-7 w-7 shrink-0">
-                        {isActive && (
-                          <motion.span
-                            aria-hidden
-                            className="absolute inset-[-3px] rounded-full pointer-events-none"
-                            style={{
-                              background:
-                                "conic-gradient(from 0deg, hsl(var(--primary)) 0%, hsl(210 80% 60%) 35%, transparent 60%, hsl(var(--primary)) 100%)",
-                              mask: "radial-gradient(circle, transparent 56%, #000 58%)",
-                              WebkitMask: "radial-gradient(circle, transparent 56%, #000 58%)",
-                            }}
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                          />
-                        )}
-                        <span
-                          className={cn(
-                            "relative z-10 flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold transition-all",
-                            isActive && "bg-white text-primary shadow-md ring-2 ring-white/50",
-                            isDone && "bg-emerald-400 text-emerald-950 shadow-[0_0_12px_rgba(52,211,153,0.5)]",
-                            !isActive && !isDone && "bg-muted text-muted-foreground ring-1 ring-border/60"
-                          )}
-                        >
-                          {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : i + 1}
-                        </span>
-                      </span>
-                      <div className="hidden sm:flex flex-col items-start leading-tight">
-                        <span
-                          className={cn(
-                            "text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors",
-                            isActive && "text-white",
-                            isDone && "text-emerald-700 dark:text-emerald-200",
-                            !isActive && !isDone && "text-muted-foreground"
-                          )}
-                        >
-                          {s.label}
-                        </span>
-                        <span
-                          className={cn(
-                            "hidden md:inline text-[9px] font-semibold tracking-wide whitespace-nowrap transition-colors mt-0.5",
-                            isActive && "text-white/70",
-                            isDone && "text-emerald-700/70 dark:text-emerald-200/70",
-                            !isActive && !isDone && "text-muted-foreground/60"
-                          )}
-                        >
-                          {s.desc}
-                        </span>
-                      </div>
-                      {isActive && (
-                        <motion.div
-                          layoutId="step-active-glow"
-                          className="absolute inset-0 rounded-xl pointer-events-none"
-                          style={{ boxShadow: "0 0 0 1px hsl(var(--primary) / 0.4) inset" }}
-                          transition={{ type: "spring", stiffness: 320, damping: 30 }}
-                        />
-                      )}
-                    </button>
-                    {i < STEPS.length - 1 && <div className="flex-1 mx-2" />}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       </div>
+
 
 
       {/* ═══ Content Area — on page surface ═══ */}
@@ -1211,126 +1044,137 @@ export function CustomGroupBuilder() {
                   className="space-y-6"
                 >
                   <div className="flex flex-col gap-6">
-                    {/* Premium Search Card */}
-                    <div className="relative rounded-2xl border border-border/40 bg-card/80 backdrop-blur-xl ring-1 ring-border/40 overflow-hidden shadow-xl">
-                      {/* Header strip */}
-                      <div className="relative bg-gradient-to-r from-primary/[0.08] via-blue-500/[0.05] to-transparent px-6 py-5 border-b border-border/40">
-                        <div className="flex items-center gap-3">
-                          <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.4 }} className="h-11 w-11 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center ring-2 ring-primary/20 shadow-lg">
-                            <Compass className="h-5 w-5 text-primary-foreground" />
-                          </motion.div>
-                          <div className="flex-1 min-w-0">
+                    {/* Premium Search Card Redesign */}
+                    <div className="relative rounded-3xl bg-white dark:bg-card shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] ring-1 ring-border/50 border border-border/50 overflow-hidden mt-2">
+                      <div className="flex flex-col md:flex-row items-stretch md:divide-x divide-y md:divide-y-0 divide-border/50">
+                        
+                        {/* From City */}
+                        <Popover open={originOpen} onOpenChange={setOriginOpen}>
+                          <PopoverTrigger asChild>
+                            <button className="flex-1 flex flex-col justify-center px-6 py-4 hover:bg-muted/30 transition-colors text-left focus:outline-none min-h-[80px]">
+                              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 flex items-center gap-2">
+                                <MapPin className="h-3.5 w-3.5 text-primary" /> From
+                              </span>
+                              <span className="font-bold text-lg text-foreground truncate">
+                                {originCityId ? availableCities?.find(c => c.id === originCityId)?.name : <span className="text-muted-foreground/60 font-medium text-base">Where from?</span>}
+                              </span>
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 border-border/60 bg-background/95 backdrop-blur-xl rounded-2xl shadow-2xl z-[100] w-[300px]" align="start">
+                            <Command className="rounded-2xl">
+                              <CommandInput placeholder="Search origin city..." className="h-12 border-none ring-0 focus-visible:ring-0 text-base px-4" />
+                              <CommandList className="max-h-[250px] p-2">
+                                <CommandEmpty>No cities found.</CommandEmpty>
+                                <CommandGroup>
+                                  {availableCities?.map((c) => (
+                                    <CommandItem key={c.id} value={`${c.name} ${c.country}`} onSelect={() => { setOriginCityId(c.id); setOriginOpen(false); }} className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer rounded-xl hover:bg-muted transition-colors my-1">
+                                      <span className="flex items-center gap-3 font-semibold text-sm">
+                                        {c.country && getCountryFlagUrl(c.country) ? <img src={getCountryFlagUrl(c.country)!} alt="" className="h-4 w-6 object-cover rounded shadow-sm" /> : <MapPin className="h-4 w-4 text-muted-foreground" />}
+                                        {c.name}, <span className="text-muted-foreground font-normal">{c.country}</span>
+                                      </span>
+                                      {originCityId === c.id && <Check className="h-4 w-4 text-primary" />}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
 
-                            <h3 className="font-semibold text-foreground leading-tight">Plan Your Group Trip</h3>
-                            <p className="text-sm text-muted-foreground">Select route and travel dates for your group</p>
-                          </div>
+                        {/* Swap Button container for mobile (absolute center for desktop) */}
+                        <div className="md:hidden flex justify-center -my-4 relative z-10">
+                          <button type="button" onClick={() => { const tmp = originCityId; setOriginCityId(destinationCityId); setDestinationCityId(tmp); }} className="h-8 w-8 rounded-full bg-white dark:bg-card border border-border/50 shadow-md flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-colors">
+                            <ArrowLeftRight className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        {/* To City */}
+                        <Popover open={destinationOpen} onOpenChange={setDestinationOpen}>
+                          <PopoverTrigger asChild>
+                            <button className="flex-1 flex flex-col justify-center px-6 py-4 hover:bg-muted/30 transition-colors text-left focus:outline-none min-h-[80px]">
+                              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 flex items-center gap-2">
+                                <Globe className="h-3.5 w-3.5 text-primary" /> To
+                              </span>
+                              <span className="font-bold text-lg text-foreground truncate">
+                                {destinationCityId ? availableCities?.find(c => c.id === destinationCityId)?.name : <span className="text-muted-foreground/60 font-medium text-base">Where to?</span>}
+                              </span>
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 border-border/60 bg-background/95 backdrop-blur-xl rounded-2xl shadow-2xl z-[100] w-[300px]" align="start">
+                            <Command className="rounded-2xl">
+                              <CommandInput placeholder="Search destination city..." className="h-12 border-none ring-0 focus-visible:ring-0 text-base px-4" />
+                              <CommandList className="max-h-[250px] p-2">
+                                <CommandEmpty>No cities found.</CommandEmpty>
+                                <CommandGroup>
+                                  {availableCities?.filter(c => c.id !== originCityId).map((c) => (
+                                    <CommandItem key={c.id} value={`${c.name} ${c.country}`} onSelect={() => { setDestinationCityId(c.id); setDestinationOpen(false); }} className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer rounded-xl hover:bg-muted transition-colors my-1">
+                                      <span className="flex items-center gap-3 font-semibold text-sm">
+                                        {c.country && getCountryFlagUrl(c.country) ? <img src={getCountryFlagUrl(c.country)!} alt="" className="h-4 w-6 object-cover rounded shadow-sm" /> : <Globe className="h-4 w-4 text-muted-foreground" />}
+                                        {c.name}, <span className="text-muted-foreground font-normal">{c.country}</span>
+                                      </span>
+                                      {destinationCityId === c.id && <Check className="h-4 w-4 text-primary" />}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+
+                        {/* Dates Group */}
+                        <div className="flex-[1.5] flex flex-row divide-x divide-border/50 relative">
+                          
+                          {/* Departure */}
+                          <Popover open={departureDateOpen} onOpenChange={setDepartureDateOpen}>
+                            <PopoverTrigger asChild>
+                              <button className="flex-1 flex flex-col justify-center px-4 py-4 hover:bg-muted/30 transition-colors text-left focus:outline-none min-h-[80px]">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                                  <CalendarIcon className="h-3.5 w-3.5 text-primary" /> Departure
+                                </span>
+                                {departureDate ? 
+                                  <span className="font-bold text-base text-foreground flex flex-col leading-tight truncate">
+                                    {format(departureDate, "MMM dd")} <span className="text-[10px] font-medium text-muted-foreground uppercase mt-0.5">{format(departureDate, "EEEE")}</span>
+                                  </span> 
+                                  : 
+                                  <span className="text-muted-foreground/60 font-medium text-base">Add date</span>
+                                }
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0 rounded-2xl shadow-2xl border-border/60" align="end">
+                              <Calendar mode="single" selected={departureDate} onSelect={(d) => { setDepartureDate(d); setDepartureDateOpen(false); if (d && (!returnDate || returnDate <= d)) { setTimeout(() => setReturnDateOpen(true), 120); } }} disabled={(date) => startOfDay(date) < startOfDay(new Date())} initialFocus className="p-4" components={{ DayContent: ({ date: dayDate }) => { const key = format(dayDate, "yyyy-MM-dd"); const info = departureDateAvailability.get(key); const hasRoute = originCityId && destinationCityId; return (<div className="flex flex-col items-center gap-0"><span>{dayDate.getDate()}</span>{hasRoute && info && <span className={cn("text-[9px] font-bold leading-none mt-1", info.seats < 5 ? "text-amber-500" : "text-emerald-500")}>${info.price}</span>}{hasRoute && !info && startOfDay(dayDate) >= startOfDay(new Date()) && <span className="text-[9px] text-muted-foreground/30 leading-none mt-1">—</span>}</div>); } }} />
+                            </PopoverContent>
+                          </Popover>
+
+                          {/* Return */}
+                          <Popover open={returnDateOpen} onOpenChange={setReturnDateOpen}>
+                            <PopoverTrigger asChild>
+                              <button className="flex-1 flex flex-col justify-center px-4 py-4 hover:bg-muted/30 transition-colors text-left focus:outline-none min-h-[80px]">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                                  <CalendarIcon className="h-3.5 w-3.5 text-primary" /> Return
+                                </span>
+                                {returnDate ? 
+                                  <span className="font-bold text-base text-foreground flex flex-col leading-tight truncate">
+                                    {format(returnDate, "MMM dd")} <span className="text-[10px] font-medium text-muted-foreground uppercase mt-0.5">{format(returnDate, "EEEE")}</span>
+                                  </span> 
+                                  : 
+                                  <span className="text-muted-foreground/60 font-medium text-base">Add date</span>
+                                }
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0 rounded-2xl shadow-2xl border-border/60" align="end">
+                              <Calendar mode="single" selected={returnDate} onSelect={(d) => { setReturnDate(d); if (d) setReturnDateOpen(false); }} disabled={(date) => startOfDay(date) < (departureDate ? startOfDay(departureDate) : startOfDay(new Date()))} initialFocus className="p-4" components={{ DayContent: ({ date: dayDate }) => { const key = format(dayDate, "yyyy-MM-dd"); const info = returnDateAvailability.get(key); const hasRoute = originCityId && destinationCityId; return (<div className="flex flex-col items-center gap-0"><span>{dayDate.getDate()}</span>{hasRoute && info && <span className={cn("text-[9px] font-bold leading-none mt-1", info.seats < 5 ? "text-amber-500" : "text-emerald-500")}>${info.price}</span>}{hasRoute && !info && startOfDay(dayDate) >= startOfDay(new Date()) && <span className="text-[9px] text-muted-foreground/30 leading-none mt-1">—</span>}</div>); } }} />
+                            </PopoverContent>
+                          </Popover>
                         </div>
                       </div>
-                      {/* Fields row */}
-                      <div className="p-6">
-                        <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-end">
-                          {/* From City */}
-                          <div className="md:col-span-3 space-y-1.5">
-                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">From</label>
-                            <Popover open={originOpen} onOpenChange={setOriginOpen}>
-                              <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-full h-12 justify-start text-left font-normal bg-card/60 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 transition-colors px-3 gap-2">
-                                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
-                                    <MapPin className="h-5 w-5 text-white" />
-                                  </div>
-                                  <span className="font-bold text-foreground text-sm truncate">{originCityId ? availableCities?.find(c => c.id === originCityId)?.name : <span className="text-muted-foreground font-normal">Departure city</span>}</span>
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="p-0 border-border/60 bg-background/95 backdrop-blur-xl rounded-xl shadow-2xl z-[100]" align="start">
-                                <Command className="rounded-xl">
-                                  <CommandInput placeholder="Search origin city..." className="h-10" />
-                                  <CommandList className="max-h-[220px]">
-                                    <CommandEmpty>No cities found.</CommandEmpty>
-                                    <CommandGroup>
-                                      {availableCities?.map((c) => (
-                                        <CommandItem key={c.id} value={`${c.name} ${c.country}`} onSelect={() => { setOriginCityId(c.id); setOriginOpen(false); }} className="flex items-center justify-between gap-2 px-3 py-2 font-medium text-xs cursor-pointer data-[selected='true']:bg-primary/10 rounded-lg mx-1 my-0.5">
-                                          <span className="flex items-center gap-2">{c.country && getCountryFlagUrl(c.country) && <img src={getCountryFlagUrl(c.country)!} alt="" className="h-3 w-5 object-cover rounded-sm" />}{c.name}, {c.country}</span>
-                                          {originCityId === c.id && <Check className="h-3 w-3 text-primary" />}
-                                        </CommandItem>
-                                      ))}
-                                    </CommandGroup>
-                                  </CommandList>
-                                </Command>
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                          {/* Swap */}
-                          <div className="md:col-span-1 flex justify-center items-end pb-1">
-                            <motion.button type="button" onClick={() => { const tmp = originCityId; setOriginCityId(destinationCityId); setDestinationCityId(tmp); }} whileHover={{ rotate: 180, scale: 1.08 }} whileTap={{ scale: 0.92 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shadow-lg ring-2 ring-card transition-shadow">
-                              <ArrowLeftRight className="h-4 w-4 text-primary-foreground" />
-                            </motion.button>
-                          </div>
-                          {/* To City */}
-                          <div className="md:col-span-3 space-y-1.5">
-                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">To</label>
-                            <Popover open={destinationOpen} onOpenChange={setDestinationOpen}>
-                              <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-full h-12 justify-start text-left font-normal bg-card/60 backdrop-blur border-border/40 rounded-xl hover:bg-primary/5 hover:border-primary/40 transition-colors px-3 gap-2">
-                                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
-                                    <Globe className="h-5 w-5 text-white" />
-                                  </div>
-                                  <span className="font-bold text-foreground text-sm truncate">{destinationCityId ? availableCities?.find(c => c.id === destinationCityId)?.name : <span className="text-muted-foreground font-normal">Arrival city</span>}</span>
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="p-0 border-border/60 bg-background/95 backdrop-blur-xl rounded-xl shadow-2xl z-[100]" align="start">
-                                <Command className="rounded-xl">
-                                  <CommandInput placeholder="Search destination city..." className="h-10" />
-                                  <CommandList className="max-h-[220px]">
-                                    <CommandEmpty>No cities found.</CommandEmpty>
-                                    <CommandGroup>
-                                      {availableCities?.filter(c => c.id !== originCityId).map((c) => (
-                                        <CommandItem key={c.id} value={`${c.name} ${c.country}`} onSelect={() => { setDestinationCityId(c.id); setDestinationOpen(false); }} className="flex items-center justify-between gap-2 px-3 py-2 font-medium text-xs cursor-pointer data-[selected='true']:bg-primary/10 rounded-lg mx-1 my-0.5">
-                                          <span className="flex items-center gap-2">{c.country && getCountryFlagUrl(c.country) && <img src={getCountryFlagUrl(c.country)!} alt="" className="h-3 w-5 object-cover rounded-sm" />}{c.name}, {c.country}</span>
-                                          {destinationCityId === c.id && <Check className="h-3 w-3 text-primary" />}
-                                        </CommandItem>
-                                      ))}
-                                    </CommandGroup>
-                                  </CommandList>
-                                </Command>
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                          {/* Departure */}
-                          <div className="md:col-span-2 space-y-1.5 relative">
-                            {nights > 0 && <div className="hidden md:flex absolute -left-2 top-8 z-10 -translate-x-1/2 items-center justify-center px-2 py-0.5 rounded-full bg-gradient-to-r from-primary to-blue-500 text-primary-foreground text-[10px] font-bold shadow-lg ring-2 ring-background">{nights}n</div>}
-                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Departure</label>
-                            <Popover open={departureDateOpen} onOpenChange={setDepartureDateOpen}>
-                              <PopoverTrigger asChild>
-                                <Button variant="outline" className={cn("w-full h-12 justify-start text-left font-normal bg-card/60 backdrop-blur border-border/40 rounded-xl hover:bg-card hover:border-primary transition-colors px-3", !departureDate && "text-muted-foreground")}>
-                                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 mr-2 shadow-md shadow-blue-500/20">
-                                    <CalendarIcon className="h-5 w-5 text-white" />
-                                  </div>
-                                  {departureDate ? <span className="flex flex-col leading-tight"><span className="font-bold text-foreground text-sm">{format(departureDate, "dd MMM yyyy")}</span><span className="text-[10px] text-muted-foreground uppercase">{format(departureDate, "EEEE")}</span></span> : <span className="text-muted-foreground">Pick date</span>}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar mode="single" selected={departureDate} onSelect={(d) => { setDepartureDate(d); setDepartureDateOpen(false); if (d && (!returnDate || returnDate <= d)) { setTimeout(() => setReturnDateOpen(true), 120); } }} disabled={(date) => startOfDay(date) < startOfDay(new Date())} initialFocus className="p-3 pointer-events-auto" components={{ DayContent: ({ date: dayDate }) => { const key = format(dayDate, "yyyy-MM-dd"); const info = departureDateAvailability.get(key); const hasRoute = originCityId && destinationCityId; return (<div className="flex flex-col items-center gap-0"><span>{dayDate.getDate()}</span>{hasRoute && info && <span className={cn("text-[8px] font-bold leading-none -mt-0.5", info.seats < 5 ? "text-amber-500" : "text-emerald-500")}>${info.price}</span>}{hasRoute && !info && startOfDay(dayDate) >= startOfDay(new Date()) && <span className="text-[8px] text-muted-foreground/40 leading-none -mt-0.5">—</span>}</div>); } }} />
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                          {/* Return */}
-                          <div className="md:col-span-2 space-y-1.5">
-                            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Return</label>
-                            <Popover open={returnDateOpen} onOpenChange={setReturnDateOpen}>
-                              <PopoverTrigger asChild>
-                                <Button variant="outline" className={cn("w-full h-12 justify-start text-left font-normal bg-card/60 backdrop-blur border-border/40 rounded-xl hover:bg-card hover:border-primary transition-colors px-3", !returnDate && "text-muted-foreground")}>
-                                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-blue-500 flex items-center justify-center shrink-0 mr-2 shadow-md shadow-blue-500/20">
-                                    <CalendarIcon className="h-5 w-5 text-white" />
-                                  </div>
-                                  {returnDate ? <span className="flex flex-col leading-tight"><span className="font-bold text-foreground text-sm">{format(returnDate, "dd MMM yyyy")}</span><span className="text-[10px] text-muted-foreground uppercase">{format(returnDate, "EEEE")}</span></span> : <span className="text-muted-foreground">Pick date</span>}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar mode="single" selected={returnDate} onSelect={(d) => { setReturnDate(d); if (d) setReturnDateOpen(false); }} disabled={(date) => startOfDay(date) < (departureDate ? startOfDay(departureDate) : startOfDay(new Date()))} initialFocus className="p-3 pointer-events-auto" components={{ DayContent: ({ date: dayDate }) => { const key = format(dayDate, "yyyy-MM-dd"); const info = returnDateAvailability.get(key); const hasRoute = originCityId && destinationCityId; return (<div className="flex flex-col items-center gap-0"><span>{dayDate.getDate()}</span>{hasRoute && info && <span className={cn("text-[8px] font-bold leading-none -mt-0.5", info.seats < 5 ? "text-amber-500" : "text-emerald-500")}>${info.price}</span>}{hasRoute && !info && startOfDay(dayDate) >= startOfDay(new Date()) && <span className="text-[8px] text-muted-foreground/40 leading-none -mt-0.5">—</span>}</div>); } }} />
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                        </div>
+                      
+                      {/* Desktop floating swap icon */}
+                      <div className="hidden md:block absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10" style={{ left: '28.57%' }}>
+                        <button type="button" onClick={() => { const tmp = originCityId; setOriginCityId(destinationCityId); setDestinationCityId(tmp); }} className="h-10 w-10 rounded-full bg-white dark:bg-slate-800 border-4 border-slate-50 dark:border-slate-900 shadow-md flex items-center justify-center text-primary hover:bg-primary hover:text-white hover:scale-110 active:scale-95 transition-all">
+                          <ArrowLeftRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
                         {nights > 0 && (
                           <div className="mt-4 flex items-center gap-4 px-4 py-3 rounded-xl bg-primary/5 border border-primary/15">
                             <div><p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Duration</p><p className="text-sm font-bold text-foreground">{nights} night{nights > 1 ? "s" : ""}</p></div>
@@ -1357,8 +1201,7 @@ export function CustomGroupBuilder() {
                             Next: Select Flights <ArrowRight className="h-4 w-4" />
                           </Button>
                         </div>
-                      </div>
-                    </div>
+
                     {/* Advertisement Banner Slider */}
                     <div className="relative rounded-2xl overflow-hidden h-[130px] border border-border/40 shadow-xl mt-2">
                       <ImageCarousel
@@ -1440,28 +1283,23 @@ export function CustomGroupBuilder() {
 
                   {/* Outbound Section */}
                   <div>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center border border-primary/20 shadow-sm">
-                        <PlaneTakeoffIcon className="h-5 w-5 text-primary" size={20} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-base font-bold text-foreground tracking-tight font-heading">Outbound Flight</h3>
-                          <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-[0.12em] rounded-md border-primary/30 bg-primary/5 text-primary px-1.5 py-0">Departure</Badge>
+                    <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-[#F0F4F8] border border-border/40 shadow-sm mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-xl bg-[#2A3F8B] flex items-center justify-center shadow-sm">
+                          <PlaneTakeoffIcon className="h-4 w-4 text-white" />
                         </div>
-                        <p className="text-[12px] text-muted-foreground font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          <span className="font-semibold text-foreground/80">{originCity?.name}</span>
-                          <ArrowRight className="h-3 w-3" />
-                          <span className="font-semibold text-foreground/80">{destinationCity?.name}</span>
-                          <span className="text-muted-foreground/60">•</span>
-                          <span>{departureDate && format(departureDate, "EEE, dd MMM yyyy")}</span>
-                          <span className="text-muted-foreground/60">•</span>
-                          <span>{passengerCount} pax</span>
-                        </p>
+                        <div>
+                          <h3 className="text-sm font-bold text-[#2A3F8B] tracking-tight flex items-center gap-2">
+                            Outbound Flights
+                            {departureDate && <Badge className="bg-[#E2E8F0] text-[#2A3F8B] border-0 text-[10px] h-5 px-2 font-bold shadow-none">{format(departureDate, "EEE, d MMM yyyy")}</Badge>}
+                          </h3>
+                          <p className="text-[10px] text-muted-foreground font-medium">{originCity?.name} → {destinationCity?.name}</p>
+                        </div>
                       </div>
-                      <div className="text-right hidden sm:block">
-                        <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-muted-foreground">Options</p>
-                        <p className="text-sm font-bold text-foreground tabular-nums">{outboundFlights.length}</p>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-[#E2E8F0] text-[#2A3F8B] border border-border/40 text-[10px] font-bold tracking-wide hover:bg-[#D1D5DB]">
+                          {outboundFlights.length} flight{outboundFlights.length !== 1 ? "s" : ""}
+                        </Badge>
                       </div>
                     </div>
                     {outboundFlights.length === 0 ? (
@@ -1474,7 +1312,7 @@ export function CustomGroupBuilder() {
                       </div>
                     ) : (
                       <div className="grid gap-3">
-                        {outboundFlights.map(f => renderFlightCard(f, selectedOutboundFlight?.id === f.id, () => setSelectedOutboundFlight(f)))}
+                        {outboundFlights.map(f => renderFlightCard(f, selectedOutboundFlight?.id === f.id, () => handleSelectOutbound(f)))}
                       </div>
                     )}
                   </div>
@@ -1496,28 +1334,24 @@ export function CustomGroupBuilder() {
 
                   {/* Return Section */}
                   <div>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 flex items-center justify-center border border-emerald-500/20 shadow-sm">
-                        <PlaneLandingIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" size={20} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-base font-bold text-foreground tracking-tight font-heading">Return Flight</h3>
-                          <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-[0.12em] rounded-md border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 px-1.5 py-0">Inbound</Badge>
+                    <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-[#F0F4F8] border border-border/40 shadow-sm mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-xl bg-[#2A3F8B] flex items-center justify-center shadow-sm">
+                          <PlaneLandingIcon className="h-4 w-4 text-white" />
                         </div>
-                        <p className="text-[12px] text-muted-foreground font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          <span className="font-semibold text-foreground/80">{destinationCity?.name}</span>
-                          <ArrowRight className="h-3 w-3" />
-                          <span className="font-semibold text-foreground/80">{originCity?.name}</span>
-                          <span className="text-muted-foreground/60">•</span>
-                          <span>{returnDate && format(returnDate, "EEE, dd MMM yyyy")}</span>
-                          <span className="text-muted-foreground/60">•</span>
-                          <span>{passengerCount} pax</span>
-                        </p>
+                        <div>
+                          <h3 className="text-sm font-bold text-[#2A3F8B] tracking-tight flex items-center gap-1.5">
+                            Return Flights
+                            <Badge className="bg-[#E2E8F0] text-[#2A3F8B] border-0 text-[8px] h-4 px-1.5 font-bold tracking-wider">↩ RETURN</Badge>
+                            {returnDate && <Badge className="bg-[#E2E8F0] text-[#2A3F8B] border-0 text-[10px] h-5 px-2 font-bold shadow-none">{format(returnDate, "EEE, d MMM yyyy")}</Badge>}
+                          </h3>
+                          <p className="text-[10px] text-muted-foreground font-medium">{destinationCity?.name} → {originCity?.name}</p>
+                        </div>
                       </div>
-                      <div className="text-right hidden sm:block">
-                        <p className="text-[9px] uppercase tracking-[0.15em] font-bold text-muted-foreground">Options</p>
-                        <p className="text-sm font-bold text-foreground tabular-nums">{returnFlights.length}</p>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-[#E2E8F0] text-[#2A3F8B] border border-border/40 text-[10px] font-bold tracking-wide hover:bg-[#D1D5DB]">
+                          {returnFlights.length} flight{returnFlights.length !== 1 ? "s" : ""}
+                        </Badge>
                       </div>
                     </div>
                     {returnFlights.length === 0 ? (
@@ -1530,7 +1364,7 @@ export function CustomGroupBuilder() {
                       </div>
                     ) : (
                       <div className="grid gap-3">
-                        {returnFlights.map(f => renderFlightCard(f, selectedReturnFlight?.id === f.id, () => setSelectedReturnFlight(f), true))}
+                        {returnFlights.map(f => renderFlightCard(f, selectedReturnFlight?.id === f.id, () => handleSelectReturn(f), true))}
                       </div>
                     )}
                   </div>
@@ -2270,16 +2104,18 @@ export function CustomGroupBuilder() {
           <div className="hidden lg:block w-80 flex-shrink-0">
             <div className="sticky top-6 space-y-4">
               {/* ── Guests & Rooms Panel ── */}
-              <div className="rounded-2xl border border-border/60 bg-white dark:bg-card ring-1 ring-primary/10 overflow-hidden shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)]">
-                <div className="px-5 py-4 border-b border-border/60 bg-gradient-to-r from-primary/[0.05] to-accent/[0.05]">
-                  <h3 className="text-base font-bold text-foreground tracking-tight">Guests & Rooms</h3>
+              <div className="rounded-3xl border border-border/40 bg-white dark:bg-card overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+                <div className="px-6 py-5 border-b border-border/40 bg-card">
+                  <h3 className="text-lg font-bold text-foreground tracking-tight">Guests & Rooms</h3>
                 </div>
-                <div className="p-4 space-y-3">
+                <div className="p-6 space-y-5">
                   {/* Room count */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm text-foreground font-semibold">
-                      <BedDouble className="h-4 w-4 text-primary" />
-                      Rooms
+                  <div className="flex items-center justify-between pb-4 border-b border-border/40">
+                    <div className="flex items-center gap-3 text-sm text-foreground font-semibold">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <BedDouble className="h-4 w-4 text-primary" />
+                      </div>
+                      Number of Rooms
                     </div>
                     <Select value={String(guestRooms.length)} onValueChange={(v) => {
                       const count = parseInt(v);
@@ -2306,19 +2142,19 @@ export function CustomGroupBuilder() {
                         return sliced;
                       });
                     }}>
-                      <SelectTrigger className="w-16 h-9 rounded-xl text-sm font-bold border-border/60 bg-background/70 text-foreground">
+                      <SelectTrigger className="w-16 h-10 rounded-xl text-base font-bold border-border/40 bg-background hover:bg-muted/50 transition-colors focus:ring-primary/20">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="rounded-xl border-border/40 shadow-xl">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                          <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                          <SelectItem key={n} value={String(n)} className="rounded-lg">{n}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   {/* Each room */}
-                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                     {guestRooms.map((room, idx) => {
                       const roomType = getRoomTypeLabel(room);
                       const canAddChild = room.adults >= 2 && room.children === 0 && room.adults < 3;
@@ -2326,14 +2162,14 @@ export function CustomGroupBuilder() {
                       const canAddAdult = room.adults < MAX_ADULTS && (room.adults < 2 || (room.adults === 2 && room.children === 0 && room.children6 === 0));
 
                       return (
-                        <div key={room.id} className="rounded-xl border border-border/60 bg-muted/30 overflow-hidden">
-                          <div className="flex items-center justify-between px-3 py-2 bg-muted/50 border-b border-border/60">
-                            <span className="text-xs font-bold text-foreground uppercase tracking-wider">Room {idx + 1}</span>
-                            <Badge variant="secondary" className="text-[10px] font-bold rounded-lg px-2 bg-primary/10 text-primary border-primary/20">
+                        <div key={room.id} className="rounded-2xl border border-border/40 bg-background/50 overflow-hidden shadow-sm">
+                          <div className="flex items-center justify-between px-4 py-3 bg-muted/20 border-b border-border/40">
+                            <span className="text-xs font-bold text-foreground uppercase tracking-widest text-muted-foreground">Room {idx + 1}</span>
+                            <Badge variant="secondary" className="text-[10px] font-bold rounded-full px-3 py-0.5 bg-primary/10 text-primary border border-primary/20">
                               {roomType}
                             </Badge>
                           </div>
-                          <div className="p-3 space-y-2.5">
+                          <div className="p-4 space-y-4">
                             {([
                               { key: "adults" as const, label: "Adults", sub: "12+ years", icon: UserRound, min: 1, canIncrease: canAddAdult },
                               { key: "children" as const, label: "Child", sub: "2-12 years", icon: Users, min: 0, canIncrease: canAddChild },
@@ -2343,24 +2179,26 @@ export function CustomGroupBuilder() {
                               const Icon = cat.icon;
                               const val = room[cat.key];
                               return (
-                                <div key={cat.key} className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2.5">
-                                    <Icon className="h-4 w-4 text-primary" />
+                                <div key={cat.key} className="flex items-center justify-between group">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                                      <Icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                                    </div>
                                     <div>
-                                      <p className="text-xs font-semibold text-foreground">{cat.label}</p>
-                                      <p className="text-[10px] text-muted-foreground font-light">{cat.sub}</p>
+                                      <p className="text-sm font-semibold text-foreground leading-none">{cat.label}</p>
+                                      <p className="text-[11px] text-muted-foreground font-medium mt-1">{cat.sub}</p>
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-0 rounded-lg overflow-hidden border border-border/60 bg-muted/40">
+                                  <div className="flex items-center gap-3">
                                     <button
                                       type="button"
                                       onClick={() => updateGuestRoom(room.id, cat.key, Math.max(cat.min, val - 1))}
                                       disabled={val <= cat.min}
-                                      className="h-7 w-7 flex items-center justify-center hover:bg-primary/10 disabled:opacity-30 transition-all"
+                                      className="h-8 w-8 rounded-full border border-border/60 flex items-center justify-center hover:border-primary/50 hover:text-primary disabled:opacity-30 disabled:hover:border-border/60 disabled:hover:text-foreground transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background shadow-sm"
                                     >
-                                      <Minus className="h-3 w-3 text-foreground/80" />
+                                      <Minus className="h-3.5 w-3.5" />
                                     </button>
-                                    <span className="h-7 w-7 flex items-center justify-center text-xs font-bold text-foreground border-x border-border/60 bg-background/70">
+                                    <span className="w-4 text-center text-sm font-bold text-foreground">
                                       {val}
                                     </span>
                                     <button
@@ -2372,9 +2210,9 @@ export function CustomGroupBuilder() {
                                         }
                                       }}
                                       disabled={!cat.canIncrease}
-                                      className="h-7 w-7 flex items-center justify-center hover:bg-primary/10 disabled:opacity-30 transition-all"
+                                      className="h-8 w-8 rounded-full border border-border/60 flex items-center justify-center hover:border-primary/50 hover:text-primary disabled:opacity-30 disabled:hover:border-border/60 disabled:hover:text-foreground transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 bg-background shadow-sm"
                                     >
-                                      <Plus className="h-3 w-3 text-foreground/80" />
+                                      <Plus className="h-3.5 w-3.5" />
                                     </button>
                                   </div>
                                 </div>
@@ -2389,15 +2227,15 @@ export function CustomGroupBuilder() {
                   {/* Add Room button */}
                   <button
                     onClick={addGuestRoom}
-                    className="w-full py-2 text-xs font-semibold text-primary hover:bg-primary/10 rounded-xl border border-dashed border-primary/30 transition-all"
+                    className="w-full py-3 text-sm font-bold text-primary hover:bg-primary/5 rounded-xl border-2 border-dashed border-primary/20 hover:border-primary/40 transition-all focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    + Add Room
+                    + Add Another Room
                   </button>
 
                   {/* Total guests */}
-                  <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                    <span className="text-xs text-muted-foreground font-light">Total guests</span>
-                    <span className="text-sm font-extrabold text-primary font-heading">{passengerCount}</span>
+                  <div className="flex items-center justify-between pt-4 border-t border-border/40 mt-2">
+                    <span className="text-sm text-muted-foreground font-medium">Total guests</span>
+                    <span className="text-xl font-extrabold text-foreground">{passengerCount}</span>
                   </div>
                 </div>
               </div>
@@ -2556,6 +2394,92 @@ export function CustomGroupBuilder() {
           </div>
         </div>
       </div>
+
+      {/* ═══ Bounded Cinematic Hero Band ═══ */}
+      <motion.div
+        className="relative h-[180px] md:h-[220px] rounded-3xl overflow-hidden mt-8 shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-border/50"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <motion.img
+          src={destCityImage || customGroupHeroImg}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover"
+          initial={{ scale: 1.05 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] }}
+        />
+        {/* Lighter, richer overlay for better contrast and luxury feel */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[hsl(222,47%,11%)]/80 via-[hsl(222,47%,11%)]/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[hsl(222,47%,11%)]/60 via-transparent to-[hsl(222,47%,11%)]/20" />
+        
+        <div className="relative h-full flex flex-col justify-center p-6 md:p-10">
+          {/* Eyebrow chip */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.45 }}
+            className="inline-flex items-center gap-2 mb-3 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 w-fit shadow-sm"
+          >
+            <Compass className="h-3.5 w-3.5 text-[hsl(var(--gold))]" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">
+              Tailored Experience
+            </span>
+          </motion.div>
+
+          <h2 className="text-3xl md:text-5xl font-bold tracking-tight font-heading leading-tight drop-shadow-md text-white">
+            Build Your Own <span className="text-[hsl(var(--gold))] font-light italic">Journey</span>
+          </h2>
+
+          {/* Floating live stat pills (desktop) */}
+          <div className="hidden lg:flex items-center gap-3 absolute right-10 top-1/2 -translate-y-1/2">
+            {[
+              {
+                label: "Destination",
+                value: destinationCity?.name || "Not set",
+                icon: MapPin,
+              },
+              {
+                label: "Dates",
+                value:
+                  departureDate && returnDate
+                    ? `${format(departureDate, "dd/MM")} → ${format(returnDate, "dd/MM")}`
+                    : "Pick dates",
+                icon: CalendarIcon,
+              },
+              {
+                label: "Travelers",
+                value: `${passengerCount} ${passengerCount === 1 ? "guest" : "guests"}`,
+                icon: Users,
+              },
+            ].map((pill, idx) => {
+              const Icon = pill.icon;
+              return (
+                <motion.div
+                  key={pill.label}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.25 + idx * 0.06, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/15 backdrop-blur-xl border border-white/30 shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:bg-white/20 transition-colors"
+                >
+                  <span className="flex items-center justify-center h-10 w-10 rounded-xl bg-white/20 shadow-inner">
+                    <Icon className="h-5 w-5 text-white" />
+                  </span>
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-white/70">
+                      {pill.label}
+                    </span>
+                    <span className="text-sm font-bold text-white truncate max-w-[140px]">
+                      {pill.value}
+                    </span>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }

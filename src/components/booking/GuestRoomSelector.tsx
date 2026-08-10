@@ -252,8 +252,8 @@ export function GuestRoomSelector({
         </div>
         <div className="flex items-center gap-1.5">
           {maxRooms !== undefined && (
-            <Badge variant={isSoldOut ? "destructive" : "secondary"} className="text-xs rounded-lg">
-              {maxRooms} rooms left
+            <Badge variant={isSoldOut ? "destructive" : (maxRooms > 0 && maxRooms < 5 ? "destructive" : "secondary")} className="text-xs rounded-lg">
+              {isSoldOut ? "Sold Out" : (maxRooms > 0 && maxRooms < 5 ? "Limited Availability" : `${maxRooms} rooms left`)}
             </Badge>
           )}
           <Badge variant="secondary" className="text-xs rounded-lg">

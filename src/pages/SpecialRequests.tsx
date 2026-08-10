@@ -33,6 +33,14 @@ import { formatDistanceToNow } from "date-fns";
 import { SpecialRequestForm } from "@/components/admin/SpecialRequestForm";
 import { SpecialRequestResponseDialog } from "@/components/admin/SpecialRequestResponseDialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -106,11 +114,36 @@ const SpecialRequests = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [responseDialogOpen, setResponseDialogOpen] = useState(false);
+  const [userMessageDialogOpen, setUserMessageDialogOpen] = useState(false);
+  const [userNote, setUserNote] = useState("");
   const [selectedRequest, setSelectedRequest] = useState<SpecialRequest | null>(null);
 
   const handleRespond = (request: SpecialRequest) => {
     setSelectedRequest(request);
     setResponseDialogOpen(true);
+  };
+
+  const handleOpenUserMessage = (request: SpecialRequest) => {
+    setSelectedRequest(request);
+    setUserNote("");
+    setUserMessageDialogOpen(true);
+  };
+
+  const handleSendUserMessage = async () => {
+    if (!selectedRequest || !userNote.trim()) return;
+    try {
+      const updatedDescription = `${selectedRequest.description}\n\n[User Note - ${new Date().toLocaleDateString()}]: ${userNote.trim()}`;
+      await updateRequest.mutateAsync({
+        id: selectedRequest.id,
+        description: updatedDescription,
+        status: "pending",
+      });
+      toast.success("Note added to request");
+      setUserMessageDialogOpen(false);
+      setUserNote("");
+    } catch (error) {
+      toast.error("Failed to update request");
+    }
   };
 
   const { data: allRequests, isLoading: isLoadingAll } = useSpecialRequests();
@@ -148,58 +181,96 @@ const SpecialRequests = () => {
         request={selectedRequest}
       />
 
-      {/* Hero Section */}
-      <div className="relative rounded-2xl overflow-hidden h-[200px] md:h-[240px]">
-        <ImageCarousel 
-          images={heroImages} 
-          autoPlay 
-          interval={5000}
-          aspectRatio="hero"
-          className="h-full"
-          showDots={false}
-          showArrows={false}
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent flex items-center">
-          <div className="px-8 md:px-12 max-w-2xl">
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
-              Special Requests
-            </h1>
-            <p className="text-white/80 text-lg">
-              {isAdmin ? "Handle custom requests from agencies" : "Submit special requests for your clients"}
-            </p>
-            <Button variant="navy" className="mt-4" onClick={() => setFormOpen(true)}>
-              {isAdmin ? <Plus className="h-4 w-4 mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-              {isAdmin ? "Create Request" : "New Request"}
-            </Button>
+      {/* User Message Dialog */}
+      <Dialog open={userMessageDialogOpen} onOpenChange={setUserMessageDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Request Details & Messages
+            </DialogTitle>
+            <DialogDescription>
+              View updates or send additional context to support
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedRequest && (
+            <div className="space-y-4">
+              <div className="bg-muted/50 rounded-xl p-4 space-y-2 text-sm">
+                <div className="flex items-center justify-between font-semibold">
+                  <span>Type: {formatRequestType(selectedRequest.request_type)}</span>
+                  <Badge variant="outline">{selectedRequest.status || "pending"}</Badge>
+                </div>
+                <p className="text-muted-foreground">{selectedRequest.description}</p>
+                {selectedRequest.admin_response && (
+                  <div className="mt-3 p-3 rounded-lg bg-primary/10 border border-primary/20 text-xs">
+                    <p className="font-bold text-primary mb-1 uppercase tracking-wide">Support Response:</p>
+                    <p className="text-foreground/90">{selectedRequest.admin_response}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Add a note or message for support
+                </label>
+                <Textarea
+                  placeholder="Type your message or additional request details here..."
+                  value={userNote}
+                  onChange={(e) => setUserNote(e.target.value)}
+                  className="min-h-[100px] resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setUserMessageDialogOpen(false)}>
+                  Close
+                </Button>
+                <Button 
+                  variant="navy" 
+                  onClick={handleSendUserMessage} 
+                  disabled={!userNote.trim() || updateRequest.isPending}
+                >
+                  <Send className="h-4 w-4 mr-1.5" />
+                  Send Note
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+
+      {/* Filters & Actions */}
+      <div className="flex flex-col md:flex-row gap-3 justify-between">
+        <div className="flex flex-1 flex-col md:flex-row gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search requests..." 
+              className="pl-10 rounded-xl"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[180px] rounded-xl">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="in_review">In Review</SelectItem>
+              <SelectItem value="resolved">Resolved</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      </div>
-
-
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search requests..." 
-            className="pl-10 rounded-xl"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px] rounded-xl">
-            <Filter className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="in_review">In Review</SelectItem>
-            <SelectItem value="resolved">Resolved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-          </SelectContent>
-        </Select>
+        <Button variant="navy" className="rounded-xl shrink-0" onClick={() => setFormOpen(true)}>
+          {isAdmin ? <Plus className="h-4 w-4 mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+          {isAdmin ? "Create Request" : "New Request"}
+        </Button>
       </div>
 
       {/* Requests List */}
@@ -342,7 +413,7 @@ const SpecialRequests = () => {
                               Respond
                             </Button>
                           ) : (
-                            <Button variant="navy" size="sm" className="rounded-lg">
+                            <Button variant="navy" size="sm" className="rounded-lg" onClick={() => handleOpenUserMessage(request)}>
                               <MessageSquare className="h-4 w-4 mr-1" />
                               Message
                             </Button>

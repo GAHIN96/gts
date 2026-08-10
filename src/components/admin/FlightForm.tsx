@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSidebarOffset } from "@/hooks/useSidebarOffset";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -37,13 +37,14 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCreateFlight, useUpdateFlight, type Flight } from "@/hooks/useFlights";
+import { useCreateFlight, useUpdateFlight, useDeleteFlight, type Flight } from "@/hooks/useFlights";
 import { useAirlines } from "@/hooks/useAirlines";
 import { useCities } from "@/hooks/useCities";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { FlightPriceTiersEditor } from "./FlightPriceTiersEditor";
 import { useAirports } from "@/hooks/useAirports";
+import { DocumentRequirementManager, type DocumentRequirement } from "./DocumentRequirementManager";
 
 type DefaultFareRow = { person_type: string; seat_from: number; seat_to: number; rate: number; commission: number };
 type SpecialFareRow = { from_date: string; to_date: string; person_type: string; seat_from: number; seat_to: number; rate: number; commission: number };
@@ -91,6 +92,7 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
   const sidebarOffset = useSidebarOffset();
   const createFlight = useCreateFlight();
   const updateFlight = useUpdateFlight();
+  const deleteFlight = useDeleteFlight();
   const isEditing = !!flight;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [coverPhoto, setCoverPhoto] = useState<string | null>(null);
@@ -111,12 +113,16 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
   const [faresDirty, setFaresDirty] = useState(false);
   const [specialDirty, setSpecialDirty] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; index: number } | null>(null);
+  const [linkedFlightId, setLinkedFlightId] = useState<string | null>(null);
+  const [requiredDocuments, setRequiredDocuments] = useState<DocumentRequirement[]>([]);
 
+  const [deletedDepartures, setDeletedDepartures] = useState<string[]>([]);
   const [departures, setDepartures] = useState<Array<{
+    id?: string; linked_id?: string;
     departure_date: string; departure_time: string; dept_arr_time: string;
     return_date: string; ret_dep_time: string; ret_arr_time: string;
     total_seats: number; available_seats: number; booked: number; alert_level: number;
-    flight_number: string; ret_flight_number: string;
+    departure_flight_number: string; return_flight_number: string;
     duration: string; baggage: string; is_active: boolean;
   }>>([]);
 
@@ -147,7 +153,7 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
         departure_airport_code: fa?.departure_airport_code || "",
         arrival_airport_code: fa?.arrival_airport_code || "",
         departure_date: flight.departure_date || "", arrival_date: flight.arrival_date || "",
-        departure_time: flight.departure_time || "", arrival_time: flight.arrival_time || "",
+        departure_time: (flight.departure_time || "").substring(0, 5), arrival_time: (flight.arrival_time || "").substring(0, 5),
         price: flight.price || 0, available_seats: flight.available_seats ?? 100,
         total_seats: fa?.total_seats ?? 100, class: flight.class || "economy",
         is_active: flight.is_active ?? true, trip_type: fa?.trip_type || "one_way",
@@ -159,28 +165,96 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
       });
       setCoverPhoto(fa?.cover_photo_url || null);
 
-      // Fetch real booked count from bookings table
-      const fetchBooked = async () => {
-        const { data: bookings } = await supabase
-          .from("bookings")
-          .select("passengers")
-          .eq("flight_id", flight.id)
-          .in("status", ["confirmed", "pending_payment", "payment_under_review"]);
-        const bookedCount = (bookings || []).reduce((sum, b) => sum + (b.passengers || 0), 0);
-        const totalSeats = fa?.total_seats ?? 100;
-        const availSeats = Math.max(0, totalSeats - bookedCount);
-        setDepartures([{
-          departure_date: flight.departure_date || "", departure_time: flight.departure_time || "",
-          dept_arr_time: flight.arrival_time || "", return_date: flight.arrival_date || "",
-          ret_dep_time: "", ret_arr_time: "", total_seats: totalSeats,
-          available_seats: availSeats,
-          booked: bookedCount, alert_level: 0, flight_number: "",
-          ret_flight_number: "", duration: "", baggage: "", is_active: flight.is_active ?? true,
-        }]);
+      const flightDocs = fa?.required_documents;
+      if (flightDocs && Array.isArray(flightDocs)) {
+        const seen = new Set<string>();
+        const uniqueDocs = (flightDocs as DocumentRequirement[]).filter(doc => {
+          if (seen.has(doc.id)) return false;
+          seen.add(doc.id);
+          return true;
+        });
+        setRequiredDocuments(uniqueDocs);
+      } else {
+        setRequiredDocuments([]);
+      }
+
+      // Fetch all departures for this flight package
+      const fetchRelatedFlights = async () => {
+        let relatedFlights = [flight];
+        
+        // If flight has a flight_number, fetch all dates for this route
+        if (flight.flight_number) {
+          const { data } = await supabase
+            .from("flights")
+            .select("*")
+            .eq("airline", flight.airline)
+            .eq("flight_number", flight.flight_number)
+            .eq("departure_city", flight.departure_city)
+            .eq("arrival_city", flight.arrival_city)
+            .order("departure_date", { ascending: true });
+            
+          if (data && data.length > 0) {
+            // Filter out purely return flights
+            relatedFlights = data.filter(f => !f.linked_flight_id);
+          }
+        }
+        
+        const departuresData = await Promise.all(relatedFlights.map(async (f) => {
+          const { data: bookings } = await supabase
+            .from("bookings")
+            .select("passengers")
+            .eq("flight_id", f.id)
+            .in("status", ["confirmed", "pending_payment", "payment_under_review"]);
+          const bookedCount = (bookings || []).reduce((sum, b) => sum + (b.passengers || 0), 0);
+          const totalSeats = (f as any).total_seats ?? 100;
+          const availSeats = (f as any).available_seats !== undefined && (f as any).available_seats !== null 
+            ? (f as any).available_seats 
+            : Math.max(0, totalSeats - bookedCount);
+
+          let retDepTime = "";
+          let retArrTime = "";
+          let retFlightNum = "";
+          let returnDate = f.arrival_date || "";
+          let retId = null;
+          let retFlight: any = null;
+          
+          if ((f as any).trip_type === "round_trip" || f.linked_flight_id) {
+            const { data: retFlights } = await supabase
+              .from("flights")
+              .select("*")
+              .or(`linked_flight_id.eq.${f.id},id.eq.${f.linked_flight_id || '00000000-0000-0000-0000-000000000000'}`);
+            
+            retFlight = (retFlights || []).find(rf => rf.id !== f.id) || null;
+            if (retFlight) {
+              retId = retFlight.id;
+              retDepTime = (retFlight.departure_time || "").substring(0, 5);
+              retArrTime = (retFlight.arrival_time || "").substring(0, 5);
+              retFlightNum = retFlight.departure_flight_number || retFlight.flight_number || "";
+              returnDate = retFlight.departure_date || f.arrival_date || "";
+            }
+          }
+
+          return {
+            id: f.id,
+            linked_id: retId,
+            departure_date: f.departure_date || "", departure_time: (f.departure_time || "").substring(0, 5),
+            dept_arr_time: (f.arrival_time || "").substring(0, 5), return_date: returnDate,
+            ret_dep_time: retDepTime, ret_arr_time: retArrTime, total_seats: totalSeats,
+            available_seats: availSeats,
+            booked: bookedCount, alert_level: (f as any).alert_level || 0,
+            departure_flight_number: (f as any).departure_flight_number || "",
+            return_flight_number: (f as any).return_flight_number || retFlight?.departure_flight_number || "",
+            duration: (f as any).duration || "", baggage: (f as any).baggage || "", is_active: f.is_active ?? true,
+            transit_airport: (f as any).transit_airport || "",
+            transit_duration: (f as any).transit_duration || "",
+          };
+        }));
+
+        setDepartures(departuresData);
       };
-      fetchBooked();
+      fetchRelatedFlights();
     } else {
-      form.reset(); setCoverPhoto(null); setDepartures([]);
+      form.reset(); setCoverPhoto(null); setDepartures([]); setLinkedFlightId(null); setRequiredDocuments([]);
     }
     setActiveTab("general");
   }, [flight, form]);
@@ -246,12 +320,7 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
 
   const updateDefaultFare = (i: number, field: string, value: any) => { 
     setDefaultFares(p => {
-      const updated = p.map((r, idx) => idx === i ? { ...r, [field]: value } : r);
-      // Sort if seat_from was changed
-      if (field === "seat_from") {
-        return [...updated].sort((a, b) => (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0));
-      }
-      return updated;
+      return p.map((r, idx) => idx === i ? { ...r, [field]: value } : r);
     }); 
     setFaresDirty(true); 
   };
@@ -313,27 +382,46 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
 
   const updateSpecialFare = (i: number, field: string, value: any) => { 
     setSpecialFares(p => {
-      const updated = p.map((r, idx) => idx === i ? { ...r, [field]: value } : r);
-      if (field === "seat_from" || field === "from_date") {
-        return [...updated].sort((a, b) => {
-          const dateA = a.from_date || "";
-          const dateB = b.from_date || "";
-          if (dateA !== dateB) return dateA.localeCompare(dateB);
-          return (Number(b.seat_from) || 0) - (Number(a.seat_from) || 0);
-        });
-      }
-      return updated;
+      return p.map((r, idx) => idx === i ? { ...r, [field]: value } : r);
     }); 
     setSpecialDirty(true); 
   };
   const removeSpecialFare = (i: number) => { setSpecialFares(p => p.filter((_, idx) => idx !== i)); setSpecialDirty(true); };
   const handleSaveDefaultFares = async () => {
     if (!flight?.id) return;
-    try { await saveDefaultFares.mutateAsync({ flightId: flight.id, fares: defaultFares }); setFaresDirty(false); toast.success("Default fares saved"); } catch { toast.error("Failed to save"); }
+    try {
+      // Save default fares to all departures in the list to keep them synced
+      for (const dep of departures) {
+        if (dep.id) {
+          await saveDefaultFares.mutateAsync({ flightId: dep.id, fares: defaultFares });
+          if (dep.linked_id) {
+            await saveDefaultFares.mutateAsync({ flightId: dep.linked_id, fares: defaultFares });
+          }
+        }
+      }
+      setFaresDirty(false);
+      toast.success("Default fares saved for all departures");
+    } catch {
+      toast.error("Failed to save default fares");
+    }
   };
   const handleSaveSpecialFares = async () => {
     if (!flight?.id) return;
-    try { await saveSpecialFares.mutateAsync({ flightId: flight.id, fares: specialFares }); setSpecialDirty(false); toast.success("Special fares saved"); } catch (err: any) { toast.error(err?.message || "Failed to save special fares"); }
+    try {
+      // Save special fares to all departures in the list to keep them synced
+      for (const dep of departures) {
+        if (dep.id) {
+          await saveSpecialFares.mutateAsync({ flightId: dep.id, fares: specialFares });
+          if (dep.linked_id) {
+            await saveSpecialFares.mutateAsync({ flightId: dep.linked_id, fares: specialFares });
+          }
+        }
+      }
+      setSpecialDirty(false);
+      toast.success("Special fares saved for all departures");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save special fares");
+    }
   };
 
   const handleCoverUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -354,13 +442,22 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
   };
 
   const addDeparture = () => {
-    setDepartures(prev => [...prev, {
-      departure_date: "", departure_time: "", dept_arr_time: "",
-      return_date: "", ret_dep_time: "", ret_arr_time: "",
-      total_seats: 20, available_seats: 20, booked: 0, alert_level: 0,
-      flight_number: "", ret_flight_number: "",
-      duration: "", baggage: "", is_active: true,
-    }]);
+    setDepartures(prev => {
+      const last = prev[prev.length - 1];
+      const depDate = prev.length === 0 ? (form.watch("departure_date") || "") : "";
+      const retDate = prev.length === 0 ? (form.watch("arrival_date") || depDate) : "";
+      const flNum = "";
+      const retFlNum = "";
+      const totalS = last ? last.total_seats : Number(form.watch("total_seats")) || 20;
+      return [...prev, {
+        departure_date: depDate, departure_time: last ? last.departure_time : form.watch("departure_time") || "", dept_arr_time: last ? last.dept_arr_time : form.watch("arrival_time") || "",
+        return_date: retDate, ret_dep_time: last ? last.ret_dep_time : "", ret_arr_time: last ? last.ret_arr_time : "",
+        total_seats: totalS, available_seats: totalS, booked: 0, alert_level: 0,
+        departure_flight_number: flNum, return_flight_number: retFlNum,
+        duration: last ? last.duration : "", baggage: last ? last.baggage : "20 Kg", is_active: true,
+        transit_airport: last ? last.transit_airport : "", transit_duration: last ? last.transit_duration : "",
+      }];
+    });
   };
 
   const updateDeparture = (idx: number, field: string, value: any) => {
@@ -389,7 +486,16 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
   };
 
   const removeDeparture = (idx: number) => {
-    setDepartures(prev => prev.filter((_, i) => i !== idx));
+    setDepartures(prev => {
+      const dep = prev[idx];
+      if (dep.id) {
+        setDeletedDepartures(d => [...d, dep.id!]);
+      }
+      if (dep.linked_id) {
+        setDeletedDepartures(d => [...d, dep.linked_id!]);
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
   };
 
   const duplicateDeparture = (idx: number) => {
@@ -403,87 +509,44 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
 
   const onSubmit = async (data: FlightFormValues) => {
     try {
-      const dep = departures[0];
-      const departureDate = dep?.departure_date || data.departure_date;
-      const arrivalDate = dep?.return_date || data.arrival_date;
-
-      if (!departureDate || !arrivalDate) {
+      if (departures.length === 0) {
         setActiveTab("departures");
-        toast.error("Please complete the dates in the Departures tab before saving");
+        toast.error("Please add at least one departure in the Departures tab");
         return;
       }
 
-      const flightData: any = {
-        airline: data.airline,
-        flight_number: data.flight_number || dep?.flight_number || null,
-        description: data.description || null,
-        departure_city: data.departure_city,
-        arrival_city: data.arrival_city,
-        departure_airport_code: data.departure_airport_code || null,
-        arrival_airport_code: data.arrival_airport_code || null,
-        departure_date: departureDate,
-        arrival_date: arrivalDate,
-        departure_time: dep?.departure_time || data.departure_time || null,
-        arrival_time: dep?.dept_arr_time || data.arrival_time || null,
-        price: data.price,
-        available_seats: dep?.available_seats ?? data.available_seats,
-        total_seats: dep?.total_seats ?? data.total_seats,
-        class: data.class,
-        is_active: dep?.is_active ?? data.is_active,
-        airline_logo: null,
-        trip_type: data.trip_type,
-        cover_photo_url: coverPhoto,
-        passport_required: data.passport_required,
-        photo_required: data.photo_required,
-        id_scan_required: data.id_scan_required,
-        id_backside_required: data.id_backside_required,
-        visa_amount: data.visa_amount,
-        currency: data.currency,
-        is_featured: data.is_featured,
-        flight_policy: data.flight_policy || null,
-        ops_email: data.ops_email || null,
-        order_number: data.order_number || null,
-      };
-
-      const selectedAirline = airlines.find(a => a.name === data.airline);
-      if (selectedAirline?.logo_url) flightData.airline_logo = selectedAirline.logo_url;
-
       if (isEditing && flight) {
-        await updateFlight.mutateAsync({ id: flight.id, ...flightData });
+        let countSaved = 0;
+        
+        for (let i = 0; i < departures.length; i++) {
+          const dep = departures[i];
+          const departureDate = dep.departure_date || data.departure_date;
+          const arrivalDate = (data.trip_type === "round_trip" ? dep.return_date : departureDate) || data.arrival_date || departureDate;
 
-        if (faresDirty) {
-          await saveDefaultFares.mutateAsync({ flightId: flight.id, fares: defaultFares });
-          setFaresDirty(false);
-        }
-        if (specialDirty) {
-          await saveSpecialFares.mutateAsync({ flightId: flight.id, fares: specialFares });
-          setSpecialDirty(false);
-        }
+          if (!departureDate || (data.trip_type === "round_trip" && !dep.return_date)) {
+            setActiveTab("departures");
+            toast.error(`Please complete the dates in the Departures tab (row ${i + 1}) before saving`);
+            return;
+          }
 
-        toast.success(faresDirty || specialDirty ? "Flight and fares saved" : "Flight updated");
-      } else {
-        const newFlight = await createFlight.mutateAsync(flightData);
-        const newId = (newFlight as any)?.id;
-
-        if (newId && data.trip_type === "round_trip") {
-          const returnFlightData: any = {
+          const baseFlightData: any = {
             airline: data.airline,
-            flight_number: dep?.ret_flight_number || null,
+            flight_number: data.flight_number || null,
             description: data.description || null,
-            departure_city: data.arrival_city,
-            arrival_city: data.departure_city,
-            departure_airport_code: data.arrival_airport_code || null,
-            arrival_airport_code: data.departure_airport_code || null,
-            departure_date: arrivalDate,
-            arrival_date: departureDate,
-            departure_time: dep?.ret_dep_time || null,
-            arrival_time: dep?.ret_arr_time || null,
+            departure_city: data.departure_city,
+            arrival_city: data.arrival_city,
+            departure_airport_code: data.departure_airport_code || null,
+            arrival_airport_code: data.arrival_airport_code || null,
+            departure_date: departureDate,
+            arrival_date: arrivalDate,
+            departure_time: dep.departure_time || data.departure_time || null,
+            arrival_time: dep.dept_arr_time || data.arrival_time || null,
             price: data.price,
-            available_seats: dep?.available_seats ?? data.available_seats,
-            total_seats: dep?.total_seats ?? data.total_seats,
+            available_seats: dep.available_seats ?? data.available_seats,
+            total_seats: dep.total_seats ?? data.total_seats,
             class: data.class,
-            is_active: dep?.is_active ?? data.is_active,
-            airline_logo: flightData.airline_logo,
+            is_active: dep.is_active ?? data.is_active,
+            airline_logo: null,
             trip_type: data.trip_type,
             cover_photo_url: coverPhoto,
             passport_required: data.passport_required,
@@ -496,24 +559,175 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
             flight_policy: data.flight_policy || null,
             ops_email: data.ops_email || null,
             order_number: data.order_number || null,
-            linked_flight_id: newId,
           };
 
-          await createFlight.mutateAsync(returnFlightData);
+          const selectedAirline = airlines.find(a => a.name === data.airline);
+          if (selectedAirline?.logo_url) baseFlightData.airline_logo = selectedAirline.logo_url;
+
+          let currentFlightId = dep.id;
+          let currentRetId = dep.linked_id;
+
+          if (currentFlightId) {
+            await updateFlight.mutateAsync({ id: currentFlightId, ...baseFlightData });
+            
+            if (data.trip_type === "round_trip") {
+              const returnFlightData: any = {
+                ...baseFlightData,
+                flight_number: data.flight_number || null,
+                departure_city: data.arrival_city,
+                arrival_city: data.departure_city,
+                departure_airport_code: data.arrival_airport_code || null,
+                arrival_airport_code: data.departure_airport_code || null,
+                departure_date: arrivalDate,
+                arrival_date: departureDate,
+                departure_time: dep.ret_dep_time || null,
+                arrival_time: dep.ret_arr_time || null,
+                linked_flight_id: currentFlightId,
+                price: 0,
+              };
+
+              if (currentRetId) {
+                await updateFlight.mutateAsync({ id: currentRetId, ...returnFlightData });
+              } else {
+                const newRet = await createFlight.mutateAsync(returnFlightData);
+                if (newRet) currentRetId = (newRet as any).id;
+              }
+            }
+          } else {
+            const newFlight = await createFlight.mutateAsync(baseFlightData);
+            if (newFlight) currentFlightId = (newFlight as any).id;
+
+            if (currentFlightId && data.trip_type === "round_trip") {
+              const returnFlightData: any = {
+                ...baseFlightData,
+                flight_number: data.flight_number || null,
+                departure_city: data.arrival_city,
+                arrival_city: data.departure_city,
+                departure_airport_code: data.arrival_airport_code || null,
+                arrival_airport_code: data.departure_airport_code || null,
+                departure_date: arrivalDate,
+                arrival_date: departureDate,
+                departure_time: dep.ret_dep_time || null,
+                arrival_time: dep.ret_arr_time || null,
+                linked_flight_id: currentFlightId,
+                price: 0,
+              };
+              const newRet = await createFlight.mutateAsync(returnFlightData);
+              if (newRet) currentRetId = (newRet as any).id;
+            }
+          }
+
+          if (currentFlightId) {
+            countSaved++;
+            // Always sync default/special fares to all departures to avoid mismatch issues
+            if (defaultFares.length > 0) {
+              await saveDefaultFares.mutateAsync({ flightId: currentFlightId, fares: defaultFares });
+              if (currentRetId) await saveDefaultFares.mutateAsync({ flightId: currentRetId, fares: defaultFares });
+            }
+            if (specialFares.length > 0) {
+              await saveSpecialFares.mutateAsync({ flightId: currentFlightId, fares: specialFares });
+              if (currentRetId) await saveSpecialFares.mutateAsync({ flightId: currentRetId, fares: specialFares });
+            }
+          }
         }
 
-        if (newId) {
-          if (defaultFares.length > 0) {
-            await saveDefaultFares.mutateAsync({ flightId: newId, fares: defaultFares });
-            setFaresDirty(false);
-          }
-          if (specialFares.length > 0) {
-            await saveSpecialFares.mutateAsync({ flightId: newId, fares: specialFares });
-            setSpecialDirty(false);
+        if (deletedDepartures.length > 0) {
+          for (const delId of deletedDepartures) {
+            try { await deleteFlight.mutateAsync(delId); } catch (e) { console.error("Failed to delete departure", e); }
           }
         }
 
-        toast.success("Flight created" + (defaultFares.length > 0 || specialFares.length > 0 ? " with fares" : ""));
+        setFaresDirty(false);
+        setSpecialDirty(false);
+        toast.success(faresDirty || specialDirty ? "Flight and fares saved" : `Successfully updated ${countSaved} flight departure(s)`);
+      } else {
+        let countSaved = 0;
+        for (let i = 0; i < departures.length; i++) {
+          const dep = departures[i];
+          const departureDate = dep.departure_date || data.departure_date;
+          const arrivalDate = (data.trip_type === "round_trip" ? dep.return_date : departureDate) || data.arrival_date || departureDate;
+
+          if (!departureDate || (data.trip_type === "round_trip" && !dep.return_date)) {
+            setActiveTab("departures");
+            toast.error(`Please complete the dates in the Departures tab (row ${i + 1}) before saving`);
+            return;
+          }
+
+          const baseFlightData: any = {
+            airline: data.airline,
+            flight_number: data.flight_number || null,
+            description: data.description || null,
+            departure_city: data.departure_city,
+            arrival_city: data.arrival_city,
+            departure_airport_code: data.departure_airport_code || null,
+            arrival_airport_code: data.arrival_airport_code || null,
+            departure_date: departureDate,
+            arrival_date: arrivalDate,
+            departure_time: dep.departure_time || data.departure_time || null,
+            arrival_time: dep.dept_arr_time || data.arrival_time || null,
+            price: data.price,
+            available_seats: dep.available_seats ?? data.available_seats,
+            total_seats: dep.total_seats ?? data.total_seats,
+            class: data.class,
+            is_active: dep.is_active ?? data.is_active,
+            airline_logo: null,
+            trip_type: data.trip_type,
+            cover_photo_url: coverPhoto,
+            passport_required: data.passport_required,
+            photo_required: data.photo_required,
+            id_scan_required: data.id_scan_required,
+            id_backside_required: data.id_backside_required,
+            visa_amount: data.visa_amount,
+            currency: data.currency,
+            is_featured: data.is_featured,
+            flight_policy: data.flight_policy || null,
+            ops_email: data.ops_email || null,
+            order_number: data.order_number || null,
+          };
+
+          const selectedAirline = airlines.find(a => a.name === data.airline);
+          if (selectedAirline?.logo_url) baseFlightData.airline_logo = selectedAirline.logo_url;
+
+          const newFlight = await createFlight.mutateAsync(baseFlightData);
+          const newId = (newFlight as any)?.id;
+          let retId = null;
+
+          if (newId && data.trip_type === "round_trip") {
+            const returnFlightData: any = {
+              ...baseFlightData,
+              flight_number: data.flight_number || null,
+              departure_city: data.arrival_city,
+              arrival_city: data.departure_city,
+              departure_airport_code: data.arrival_airport_code || null,
+              arrival_airport_code: data.departure_airport_code || null,
+              departure_date: arrivalDate,
+              arrival_date: departureDate,
+              departure_time: dep.ret_dep_time || null,
+              arrival_time: dep.ret_arr_time || null,
+              linked_flight_id: newId,
+              price: 0,
+            };
+
+            const retObj = await createFlight.mutateAsync(returnFlightData);
+            if (retObj) retId = (retObj as any).id;
+          }
+
+          if (newId) {
+            countSaved++;
+            if (defaultFares.length > 0) {
+              await saveDefaultFares.mutateAsync({ flightId: newId, fares: defaultFares });
+              if (retId) await saveDefaultFares.mutateAsync({ flightId: retId, fares: defaultFares });
+            }
+            if (specialFares.length > 0) {
+              await saveSpecialFares.mutateAsync({ flightId: newId, fares: specialFares });
+              if (retId) await saveSpecialFares.mutateAsync({ flightId: retId, fares: specialFares });
+            }
+          }
+        }
+
+        setFaresDirty(false);
+        setSpecialDirty(false);
+        toast.success(`Successfully created ${countSaved} flight departure${countSaved !== 1 ? "s" : ""}`);
       }
 
       onOpenChange(false);
@@ -521,11 +735,17 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
       toast.error(err?.message || "Failed to save flight");
     }
   };
-
   const isLoading = createFlight.isPending || updateFlight.isPending;
   const tabClass = "data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-b-2 border-transparent data-[state=active]:border-primary rounded-none px-1 pb-3";
   const watchActive = form.watch("is_active");
   const flightName = form.watch("flight_number") || form.watch("description");
+  const isRoundTrip = form.watch("trip_type") === "round_trip";
+  const depHeaders = isRoundTrip
+    ? ["Departure Date", "Dept. Time", "Dept Arr.", "Return Date", "Ret. Dep.", "Ret. Arr.", "Total Seats", "Avail. Seats", "Booked", "Alert", "Dep. FL #", "Ret. FL #", "Duration", "Baggage", "Transit", "Transit Dur.", "Active", "", ""]
+    : ["Departure Date", "Dept. Time", "Dept Arr.", "Total Seats", "Avail. Seats", "Booked", "Alert", "Dep. FL #", "Duration", "Baggage", "Transit", "Transit Dur.", "Active", "", ""];
+  const gridColsTemplate = isRoundTrip
+    ? "140px 80px 80px 140px 80px 80px 80px 100px 70px 80px 1.5fr 1.5fr 1fr 1fr 1fr 1.2fr 60px 40px 40px"
+    : "140px 80px 80px 80px 100px 70px 80px 1.5fr 1fr 1fr 1fr 1.2fr 60px 40px 40px";
 
   const formContent = (
     <div className="flex flex-col h-full">
@@ -680,42 +900,13 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
             {/* Document Requirements Section */}
             <div id="flight-docs" data-jump-section="Documents" className="space-y-4 p-4 border border-t-2 border-t-primary rounded-lg bg-card shadow-sm scroll-mt-4">
               <h3 className="text-[13px] font-bold uppercase tracking-wider text-primary">Document Requirements</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 rounded-md bg-muted/20">
-                  <div>
-                    <Label className="font-semibold text-sm">Passport Scan</Label>
-                    <p className="text-xs text-muted-foreground">Require passport scan upload</p>
-                  </div>
-                  <Switch checked={form.watch("passport_required")} onCheckedChange={v => form.setValue("passport_required", v)} />
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-md bg-muted/20">
-                  <div>
-                    <Label className="font-semibold text-sm">Photo Scan</Label>
-                    <p className="text-xs text-muted-foreground">Require photo upload</p>
-                  </div>
-                  <Switch checked={form.watch("photo_required")} onCheckedChange={v => form.setValue("photo_required", v)} />
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-md bg-muted/20">
-                  <div>
-                    <Label className="font-semibold text-sm">ID Scan</Label>
-                    <p className="text-xs text-muted-foreground">Require ID front scan</p>
-                  </div>
-                  <Switch checked={form.watch("id_scan_required")} onCheckedChange={v => form.setValue("id_scan_required", v)} />
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-md bg-muted/20">
-                  <div>
-                    <Label className="font-semibold text-sm">ID Backside</Label>
-                    <p className="text-xs text-muted-foreground">Require ID back scan</p>
-                  </div>
-                  <Switch checked={form.watch("id_backside_required")} onCheckedChange={v => form.setValue("id_backside_required", v)} />
-                </div>
-              </div>
+              <DocumentRequirementManager documents={requiredDocuments} onChange={setRequiredDocuments} />
             </div>
 
             {/* Classification Section */}
             <div id="flight-classification" data-jump-section="Classification" className="space-y-4 p-4 border border-t-2 border-t-primary rounded-lg bg-card shadow-sm scroll-mt-4">
               <h3 className="text-[13px] font-bold uppercase tracking-wider text-primary">Classification & Settings</h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label className="text-[11px] uppercase text-muted-foreground font-semibold tracking-wide">Flight Class</Label>
                   <Select value={form.watch("class")} onValueChange={v => form.setValue("class", v)}>
@@ -738,25 +929,6 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
                       <SelectItem value="TRY">TRY</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] uppercase text-muted-foreground font-semibold tracking-wide">Cover Photo</Label>
-                  <div className="flex items-center gap-2">
-                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
-                    <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
-                      {isUploading ? "Uploading..." : "Choose File"}
-                    </Button>
-                    {coverPhoto ? (
-                      <div className="flex items-center gap-2">
-                        <img src={coverPhoto} alt="" className="h-8 w-8 rounded object-cover" />
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setCoverPhoto(null)} className="text-destructive h-8 px-2">
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">No file</span>
-                    )}
-                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-6">
@@ -801,28 +973,54 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
               </div>
             ) : (
               <div className="overflow-x-auto border rounded-lg">
-                <div className="min-w-[1500px]">
-                  <div className="grid grid-cols-[120px_80px_80px_120px_80px_80px_80px_100px_70px_80px_100px_100px_80px_80px_60px_32px_32px] gap-2 p-2 bg-muted/50">
-                    {["Departure Date", "Dept. Time", "Dept Arr.", "Return Date", "Ret. Dep.", "Ret. Arr.", "Total Seats", "Avail. Seats", "Booked", "Alert", "Flight #", "Ret. FL #", "Duration", "Baggage", "Active", "", ""].map((h, i) => (
+                <div className={isRoundTrip ? "min-w-[1750px]" : "min-w-[1350px]"}>
+                  <div className={`grid gap-2 p-2 bg-muted/50`} style={{ gridTemplateColumns: gridColsTemplate }}>
+                    {depHeaders.map((h, i) => (
                       <Label key={`${h}-${i}`} className="text-[10px] uppercase text-muted-foreground font-semibold tracking-wide">{h}</Label>
                     ))}
                   </div>
                   {departures.map((dep, idx) => (
-                    <div key={idx} className={`grid grid-cols-[120px_80px_80px_120px_80px_80px_80px_100px_70px_80px_100px_100px_80px_80px_60px_32px_32px] gap-2 p-2 items-center border-t ${idx % 2 === 1 ? "bg-muted/10" : ""}`}>
+                    <div key={idx} className={`grid gap-2 p-2 items-center border-t ${idx % 2 === 1 ? "bg-muted/10" : ""}`} style={{ gridTemplateColumns: gridColsTemplate }}>
                       <DateInput value={dep.departure_date} onValueChange={v => updateDeparture(idx, "departure_date", v)} className="h-9 text-sm" />
                       <Input value={dep.departure_time} onChange={e => updateDeparture(idx, "departure_time", e.target.value)} placeholder="21:00" className="h-9 text-sm" />
                       <Input value={dep.dept_arr_time} onChange={e => updateDeparture(idx, "dept_arr_time", e.target.value)} placeholder="23:40" className="h-9 text-sm" />
-                      <DateInput value={dep.return_date} onValueChange={v => updateDeparture(idx, "return_date", v)} className="h-9 text-sm" />
-                      <Input value={dep.ret_dep_time} onChange={e => updateDeparture(idx, "ret_dep_time", e.target.value)} placeholder="00:40" className="h-9 text-sm" />
-                      <Input value={dep.ret_arr_time} onChange={e => updateDeparture(idx, "ret_arr_time", e.target.value)} placeholder="01:15" className="h-9 text-sm" />
+                      {isRoundTrip && (
+                        <>
+                          <DateInput value={dep.return_date} onValueChange={v => updateDeparture(idx, "return_date", v)} className="h-9 text-sm" />
+                          <Input value={dep.ret_dep_time} onChange={e => updateDeparture(idx, "ret_dep_time", e.target.value)} placeholder="00:40" className="h-9 text-sm" />
+                          <Input value={dep.ret_arr_time} onChange={e => updateDeparture(idx, "ret_arr_time", e.target.value)} placeholder="01:15" className="h-9 text-sm" />
+                        </>
+                      )}
                       <Input type="number" value={dep.total_seats} onChange={e => { const v = parseInt(e.target.value) || 0; updateDeparture(idx, "total_seats", v); if (dep.available_seats > v) updateDeparture(idx, "available_seats", v); }} className="h-9 text-sm" />
                       <Input type="number" value={dep.available_seats} onChange={e => updateDeparture(idx, "available_seats", Math.min(parseInt(e.target.value) || 0, dep.total_seats))} className="h-9 text-sm" />
                       <span className="text-sm text-muted-foreground text-center">{dep.booked}</span>
                       <Input type="number" value={dep.alert_level} onChange={e => updateDeparture(idx, "alert_level", parseInt(e.target.value) || 0)} className="h-9 text-sm" />
-                      <Input value={dep.flight_number} onChange={e => updateDeparture(idx, "flight_number", e.target.value)} placeholder="Flight No." className="h-9 text-sm" />
-                      <Input value={dep.ret_flight_number} onChange={e => updateDeparture(idx, "ret_flight_number", e.target.value)} placeholder="Return FL" className="h-9 text-sm" />
+                      
+                      <Input
+                         name={`dep_flight_no_${idx}`}
+                         id={`dep_flight_no_${idx}`}
+                         autoComplete="off"
+                         value={dep.departure_flight_number}
+                         onChange={e => updateDeparture(idx, "departure_flight_number", e.target.value)}
+                         placeholder="Flight #"
+                         className="h-9 text-sm"
+                      />
+                      
+                      {isRoundTrip && (
+                        <Input
+                          name={`ret_flight_no_${idx}`}
+                          id={`ret_flight_no_${idx}`}
+                          autoComplete="off"
+                          value={dep.return_flight_number}
+                          onChange={e => updateDeparture(idx, "return_flight_number", e.target.value)}
+                          placeholder="Return FL"
+                          className="h-9 text-sm"
+                        />
+                      )}
                       <Input value={dep.duration} onChange={e => updateDeparture(idx, "duration", e.target.value)} placeholder="2:00" className="h-9 text-sm" />
                       <Input value={dep.baggage} onChange={e => updateDeparture(idx, "baggage", e.target.value)} placeholder="20 Kg" className="h-9 text-sm" />
+                      <Input value={dep.transit_airport} onChange={e => updateDeparture(idx, "transit_airport", e.target.value)} placeholder="IST" className="h-9 text-sm" />
+                      <Input value={dep.transit_duration} onChange={e => updateDeparture(idx, "transit_duration", e.target.value)} placeholder="2h" className="h-9 text-sm" />
                       <div className="flex justify-center">
                         <Switch checked={dep.is_active} onCheckedChange={v => updateDeparture(idx, "is_active", v)} />
                       </div>
@@ -844,8 +1042,14 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
             <h3 className="text-primary font-medium text-sm">Default Rates</h3>
             <div className="space-y-3">
                 {defaultFares.map((fare, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <Select value={fare.person_type} onValueChange={v => updateDefaultFare(idx, "person_type", v)}>
+                  <React.Fragment key={idx}>
+                    {idx > 0 && idx % 3 === 0 && (
+                      <div className="pt-5 pb-0 px-2 w-full">
+                        <div className="h-3 w-full border-t-[3px] border-primary rounded-t-xl opacity-80"></div>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <Select value={fare.person_type} onValueChange={v => updateDefaultFare(idx, "person_type", v)}>
                       <SelectTrigger className="h-9 w-[180px]"><SelectValue placeholder="Select type" /></SelectTrigger>
                       <SelectContent>
                         {["Adult", "Child", "Infant"].map(t => (
@@ -861,6 +1065,7 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
+                  </React.Fragment>
                 ))}
                 <div className="flex flex-wrap items-center gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={addDefaultFare} className="gap-1">
@@ -909,10 +1114,16 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
             <h3 className="text-primary font-medium text-sm">Special Fares</h3>
             <div className="space-y-3">
                 {specialFares.map((fare, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <DateInput value={fare.from_date} onValueChange={v => updateSpecialFare(idx, "from_date", v)} className="h-9 w-[140px]" />
-                    <DateInput value={fare.to_date} onValueChange={v => updateSpecialFare(idx, "to_date", v)} className="h-9 w-[140px]" />
-                    <Select value={fare.person_type} onValueChange={v => updateSpecialFare(idx, "person_type", v)}>
+                  <React.Fragment key={idx}>
+                    {idx > 0 && idx % 3 === 0 && (
+                      <div className="pt-5 pb-0 px-2 w-full">
+                        <div className="h-3 w-full border-t-[3px] border-primary rounded-t-xl opacity-80"></div>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <DateInput value={fare.from_date} onValueChange={v => updateSpecialFare(idx, "from_date", v)} className="h-9 w-[140px]" />
+                      <DateInput value={fare.to_date} onValueChange={v => updateSpecialFare(idx, "to_date", v)} className="h-9 w-[140px]" />
+                      <Select value={fare.person_type} onValueChange={v => updateSpecialFare(idx, "person_type", v)}>
                       <SelectTrigger className="h-9 w-[180px]"><SelectValue placeholder="Select type" /></SelectTrigger>
                       <SelectContent>
                         {["Adult", "Child", "Infant"].map(t => (
@@ -928,6 +1139,7 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
+                  </React.Fragment>
                 ))}
                 <div className="flex flex-wrap items-center gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={addSpecialFare} className="gap-1">

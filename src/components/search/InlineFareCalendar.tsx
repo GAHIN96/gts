@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   format,
   startOfMonth,
@@ -29,6 +29,7 @@ interface InlineFareCalendarProps {
   addOnPrice?: number;
   /** Label shown above the add-on breakdown */
   addOnLabel?: string;
+  defaultMonth?: Date;
 }
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -43,9 +44,21 @@ export function InlineFareCalendar({
   soldOutDates = [],
   addOnPrice = 0,
   addOnLabel,
+  defaultMonth,
 }: InlineFareCalendarProps) {
-  const [currentMonth, setCurrentMonth] = useState(selected || new Date());
+  const [currentMonth, setCurrentMonth] = useState(selected || defaultMonth || new Date());
   const today = startOfDay(new Date());
+
+  const defaultMonthTime = defaultMonth?.getTime();
+  const selectedTime = selected?.getTime();
+
+  useEffect(() => {
+    if (defaultMonthTime) {
+      setCurrentMonth(new Date(defaultMonthTime));
+    } else if (selectedTime) {
+      setCurrentMonth(new Date(selectedTime));
+    }
+  }, [defaultMonthTime, selectedTime]);
 
   const globalCheapest = useMemo(() => {
     const prices = Object.values(datePrices);
@@ -53,13 +66,16 @@ export function InlineFareCalendar({
   }, [datePrices]);
 
   const calendarDays = useMemo(() => {
+    if (!currentMonth || isNaN(currentMonth.getTime())) {
+      return [];
+    }
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
     const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
     const startPadding = getDay(monthStart);
     const paddedDays: (Date | null)[] = Array(startPadding).fill(null);
     paddedDays.push(...days);
-    while (paddedDays.length % 7 !== 0) paddedDays.push(null);
+    while (paddedDays.length < 42) paddedDays.push(null);
     return paddedDays;
   }, [currentMonth]);
 
@@ -141,7 +157,7 @@ export function InlineFareCalendar({
           const isDisabled = isPast || (disabled ? disabled(day) : false) || soldOutSet.has(dateKey);
           const isSelected = selected && isSameDay(day, selected);
           const isToday = isSameDay(day, today);
-          const hasPrice = price !== undefined;
+          const hasPrice = price !== undefined && price > 0;
           const displayPrice = hasPrice ? price + addOnPrice : undefined;
           const showTooltip = hasPrice && !isDisabled && addOnPrice > 0;
 

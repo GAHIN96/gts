@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { motion } from "framer-motion";
 import hotelHeroImg from "@/assets/hotel-hero.jpg";
+import gtsLogo from "@/assets/gts-logo-official.png";
 import { pickRoomBand, resolveRoomPrice } from "@/lib/roomPricingTier";
 import { getStayWindowRemaining, buildDayDetails } from "@/lib/hotelAvailability";
 import {
@@ -26,6 +28,8 @@ import {
   TrendingDown,
   Eye,
   BedDouble,
+  KeyRound,
+  Crown,
   ArrowRight,
   SlidersHorizontal,
   ArrowUpDown,
@@ -206,11 +210,15 @@ function getHotelRoomPrice(
   hotelAvailableDates: any[] = [],
   hotelBookings: any[] = [],
 ): number {
+  if (checkIn && checkOut) {
+    const stayPricing = getHotelStayPricing(hotel, neededType, roomConfigs, checkIn, checkOut, hotelAvailableDates, hotelBookings);
+    if (stayPricing) return stayPricing.avg;
+  }
+
   const hotelRooms = Array.isArray(hotel.hotel_rooms) ? hotel.hotel_rooms : [];
   const rooms = hotelRooms.filter(r => r && r.is_active !== false && r.room_type !== "Quadruple" && r.room_type !== "Without-Bed" && r.room_type !== "Infant");
   const specials = (hotel as any).hotel_special_prices || [];
   const requestedRooms = roomConfigs.length || 1;
-  const firstRoom = roomConfigs[0] || { adults: 1, children6to12: 0, children2to6: 0, infants: 0 };
 
   // PHASE 1: Date & Inventory Verification
   // If no dates, we can't do inventory-driven, fall back to "cheapest" or "tier 1"
@@ -257,30 +265,38 @@ function getHotelStayPricing(
   const specials: any[] = Array.isArray((hotel as any).hotel_special_prices) ? (hotel as any).hotel_special_prices : [];
   const dayDetails = buildDayDetails(hotelAvailableDates, hotelBookings, hotel.id);
 
+  // Clone dayDetails to track inventory decrements during this pricing calculation
+  const tempDayDetailsForPricing = JSON.parse(JSON.stringify(dayDetails));
+
   let totalForAllRooms = 0;
   const requestedRooms = roomConfigs.length;
 
-  // Calculate the bottleneck (minimum) inventory across the entire stay
-  // This ensures the whole stay is priced at the tier shown in the UI summary.
-  let bottleneckInventory = Number.MAX_SAFE_INTEGER;
-  for (let i = 0; i < nights; i++) {
-    const night = addDays(checkIn, i);
-    const dayKey = format(night, "yyyy-MM-dd");
-    const inv = dayDetails[dayKey]?.remaining ?? 0;
-    if (inv < bottleneckInventory) bottleneckInventory = inv;
-  }
-  if (bottleneckInventory === Number.MAX_SAFE_INTEGER) bottleneckInventory = 0;
-
   for (let rIdx = 0; rIdx < requestedRooms; rIdx++) {
     const config = roomConfigs[rIdx];
+    const type = config 
+      ? getRoomTypeFromConfig(config.adults, config.children6to12 + config.children2to6) 
+      : neededType;
+
     for (let i = 0; i < nights; i++) {
       const night = addDays(checkIn, i);
-      const resolved = resolveRoomPrice(rooms as any, neededType, bottleneckInventory, specials, night);
+      const dayKey = format(night, "yyyy-MM-dd");
+      
+      const inv = tempDayDetailsForPricing[dayKey]?.remaining ?? 0;
+      const resolved = resolveRoomPrice(rooms as any, type, inv, specials, night);
       if (resolved) {
         // Per-room rate: the adult price is the flat room rate (not per-person)
         totalForAllRooms += resolved.adult;
       } else {
         totalForAllRooms += hotel.price_per_night || 0;
+      }
+    }
+
+    // After pricing this room for its entire stay, decrement the inventory for all days of that stay
+    for (let i = 0; i < nights; i++) {
+      const night = addDays(checkIn, i);
+      const dayKey = format(night, "yyyy-MM-dd");
+      if (tempDayDetailsForPricing[dayKey]) {
+        tempDayDetailsForPricing[dayKey].remaining = Math.max(0, tempDayDetailsForPricing[dayKey].remaining - 1);
       }
     }
   }
@@ -513,16 +529,17 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
   // SHARED POOL per-day remaining: every day inside an inventory window shows
   // the same remaining count = window pool - all bookings overlapping the window.
   const getPeriodAvailableRooms = useCallback((hotel: HotelType, date: Date) => {
-    const validFrom = hotel.valid_from ? parseISO(hotel.valid_from) : null;
-    const validUntil = hotel.valid_until ? parseISO(hotel.valid_until) : null;
-    const isInValidPeriod = (!validFrom || date >= validFrom) && (!validUntil || date <= validUntil);
+    const compareDate = startOfDay(date);
+    const validFrom = hotel.valid_from ? startOfDay(parseISO(hotel.valid_from)) : null;
+    const validUntil = hotel.valid_until ? startOfDay(parseISO(hotel.valid_until)) : null;
+    const isInValidPeriod = (!validFrom || compareDate >= validFrom) && (!validUntil || compareDate <= validUntil);
     if (!isInValidPeriod) return null;
 
     const matches = hotelAvailableDates.filter((entry) => {
       if (entry.hotel_id !== hotel.id) return false;
-      const from = parseISO(entry.from_date);
-      const to = parseISO(entry.to_date);
-      return date >= from && date <= to;
+      const from = startOfDay(parseISO(entry.from_date));
+      const to = startOfDay(parseISO(entry.to_date));
+      return compareDate >= from && compareDate <= to;
     });
 
     if (matches.length === 0) return null;
@@ -1098,7 +1115,7 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
 
         <div
           className="relative flex items-stretch gap-0 cursor-pointer"
-          onClick={() => onHotelSelect?.(hotel, { checkIn, checkOut, guests: totalGuests, rooms: roomCount, adults: totalAdults, children: totalChildren, infants: 0, roomConfigs })}
+          onClick={(e) => openQuickView(e, hotel)}
         >
           {/* Best Price tag - polished brass */}
           {isBestPrice && (
@@ -1260,22 +1277,31 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
                              lower === "bb";
                     });
 
+                    const hasSpecialPrice = (hotel as any).hotel_special_prices && (hotel as any).hotel_special_prices.length > 0;
+
                     return (
                       <>
-                        <Badge variant="outline" className={cn(
-                          "text-[10px] font-extrabold uppercase tracking-[0.05em] px-3 py-1.5 rounded-lg border shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] transition-all duration-300 flex items-center gap-2",
-                          avail === 0 ? "bg-rose-500/10 text-rose-600 border-rose-500/20" :
-                            isLow ? "bg-amber-500/10 text-amber-600 border-amber-500/20" :
-                              "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/15"
-                        )}>
-                          {avail === 0 ? <X className="h-3.5 w-3.5" /> : <CheckCircle className="h-3.5 w-3.5 opacity-90" />}
-                          {avail === 0 ? "Sold Out" : `${avail} Rooms Available`}
-                        </Badge>
+                        {(avail === 0 || isLow) && (
+                          <Badge variant="outline" className={cn(
+                            "text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border shadow-sm transition-all duration-300 flex items-center gap-2 backdrop-blur-sm",
+                            "bg-gradient-to-r from-rose-500/10 to-transparent text-rose-700 border-rose-500/30"
+                          )}>
+                            {avail === 0 ? <X className="h-3 w-3" /> : <Clock className="h-3 w-3 opacity-80 text-rose-600" />}
+                            {avail === 0 ? "Sold Out" : `Limited Availability`}
+                          </Badge>
+                        )}
 
                         {hasBreakfast && (
-                          <Badge variant="outline" className="text-[10px] font-extrabold uppercase tracking-[0.05em] px-3 py-1.5 rounded-lg border bg-sky-500/10 text-sky-600 border-sky-500/20 flex items-center gap-2 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] hover:bg-sky-500/15 transition-all duration-300">
-                            <Coffee className="h-3.5 w-3.5 opacity-90" />
+                          <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-700 border-emerald-500/20 flex items-center gap-2 shadow-sm backdrop-blur-sm transition-all duration-300">
+                            <Coffee className="h-3 w-3 opacity-80 text-emerald-600" />
                             Breakfast Included
+                          </Badge>
+                        )}
+
+                        {hasSpecialPrice && (
+                          <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border bg-gradient-to-r from-violet-500/10 to-transparent text-violet-700 border-violet-500/20 flex items-center gap-2 shadow-sm backdrop-blur-sm transition-all duration-300">
+                            <Sparkles className="h-3 w-3 opacity-80 text-violet-600" />
+                            Special Offer
                           </Badge>
                         )}
                       </>
@@ -1746,32 +1772,61 @@ export function HotelSearchSection({ onHotelSelect }: HotelSearchSectionProps) {
         </div>
       </div>
 
-      {/* Cinematic Searching Animation */}
+      {/* Ultra-Sleek & Elegant GTS Hotel Search Animation */}
       {isSearching && (
-        <Card className="border-border/40 animate-fade-in overflow-hidden">
-          <CardContent className="py-20 flex flex-col items-center justify-center relative">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent animate-[shimmer_2s_ease-in-out_infinite]" style={{ backgroundSize: '200% 100%' }} />
-            </div>
-            <div className="relative w-full max-w-lg mb-10">
-              <div className="absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent -translate-y-1/2" />
-              <div className="absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent -translate-y-1/2 blur-sm" />
-              <div className="relative flex items-center justify-center">
-                <div className="bg-gradient-to-br from-primary to-primary/70 rounded-2xl p-5 shadow-xl animate-[hotel-pulse_2s_ease-in-out_infinite]">
-                  <Building className="h-8 w-8 text-primary-foreground" />
-                </div>
+        <Card className="relative overflow-hidden border border-amber-500/25 bg-card/95 backdrop-blur-2xl shadow-xl rounded-2xl p-6 lg:p-8 max-w-lg mx-auto animate-fade-in my-6">
+          {/* Subtle Ambient Glow */}
+          <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col items-center text-center space-y-4">
+            {/* Header: GTS Logo + Destination Badge */}
+            <div className="flex items-center gap-2.5">
+              <div className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-amber-500/30 flex items-center shadow-sm">
+                <img src={gtsLogo} alt="GTS Logo" className="h-5 w-auto object-contain" />
               </div>
-              <div className="absolute top-1/2 left-8 -translate-y-1/2"><div className="w-2.5 h-2.5 rounded-full bg-success/60 animate-pulse" /></div>
-              <div className="absolute top-1/2 left-20 -translate-y-1/2"><div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-pulse" style={{ animationDelay: '300ms' }} /></div>
-              <div className="absolute top-1/2 right-8 -translate-y-1/2"><div className="w-2.5 h-2.5 rounded-full bg-primary/60 animate-pulse" style={{ animationDelay: '150ms' }} /></div>
-              <div className="absolute top-1/2 right-20 -translate-y-1/2"><div className="w-1.5 h-1.5 rounded-full bg-gold/50 animate-pulse" style={{ animationDelay: '450ms' }} /></div>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <MapPin className="h-3.5 w-3.5 text-amber-500" />
+                {destination || "Hotels & Resorts"}
+              </span>
             </div>
-            <h3 className="text-xl font-bold text-foreground mb-2 font-heading tracking-tight relative">Finding Best Hotels</h3>
-            <p className="text-sm text-muted-foreground relative">Scanning availability & best rates in {destination || "your destination"}...</p>
-            <div className="relative w-48 h-1 rounded-full bg-muted mt-6 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary/60 via-primary to-primary/60 rounded-full animate-[shimmer_1.5s_ease-in-out_infinite]" style={{ backgroundSize: '200% 100%' }} />
+
+            {/* Glowing Golden Emblem & Key */}
+            <div className="relative w-28 h-28 py-1 flex items-center justify-center">
+              <span className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping" style={{ animationDuration: '2.5s' }} />
+              <span className="absolute inset-2 rounded-full border border-amber-500/40 border-dashed animate-[spin_10s_linear_infinite]" />
+              
+              <div className="relative z-10 h-16 w-16 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/30 ring-2 ring-background">
+                <BedDouble className="h-8 w-8 animate-pulse" />
+              </div>
+
+              <motion.div
+                animate={{ rotate: [0, 15, -15, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute -top-1 -right-1 z-20 h-7 w-7 rounded-lg bg-gradient-to-br from-yellow-400 to-amber-600 text-white flex items-center justify-center shadow-md ring-2 ring-background"
+              >
+                <KeyRound className="h-4 w-4" />
+              </motion.div>
             </div>
-          </CardContent>
+
+            {/* Title */}
+            <div>
+              <h3 className="text-base font-bold text-foreground tracking-tight">
+                Unlocking Best Hotel Rates
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Scanning luxury suites & wholesale rates in {destination || "destination"}...
+              </p>
+            </div>
+
+            {/* Sleek Gold Progress Bar */}
+            <div className="w-full max-w-xs bg-muted/80 h-1.5 rounded-full overflow-hidden relative">
+              <motion.div
+                className="h-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 rounded-full"
+                animate={{ width: ["15%", "95%"] }}
+                transition={{ duration: 1.4, ease: "easeOut" }}
+              />
+            </div>
+          </div>
         </Card>
       )}
 

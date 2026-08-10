@@ -121,7 +121,7 @@ export function useBooking(id: string) {
           visas (*)
         `)
         .eq("id", id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       
@@ -202,7 +202,7 @@ export function useCreateBooking() {
           user_id: user.id,
         })
         .select()
-        .single();
+        ;
 
       if (error) throw error;
 
@@ -247,10 +247,10 @@ export function useUpdateBooking() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bookings"] });

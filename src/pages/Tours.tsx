@@ -20,7 +20,7 @@ import { TablePagination } from "@/components/ui/table-pagination";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTours, useTourStats, useDeleteTour, type Tour } from "@/hooks/useTours";
 import { useState, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { TourForm } from "@/components/admin/TourForm";
 import { TourBookingModal } from "@/components/booking/TourBookingModal";
 import { ImageCarousel } from "@/components/ui/image-carousel";
@@ -33,9 +33,12 @@ import { getCountryFlagUrl } from "@/utils/countryFlags";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { format, addMonths } from "date-fns";
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import toursHero from "@/assets/tours-hero.jpg";
 
 interface DayProgram {
@@ -48,6 +51,7 @@ interface DayProgram {
 
 const Tours = () => {
   const [searchParamsUrl] = useSearchParams();
+  const navigate = useNavigate();
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const isManageView = searchParamsUrl.get("view") === "manage" && isAdmin;
@@ -62,6 +66,9 @@ const Tours = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedCountry, setSelectedCountry] = useState<string>("all");
+  const [searchDate, setSearchDate] = useState<Date>();
+  const [dateOpen, setDateOpen] = useState(false);
+  const [searchGuests, setSearchGuests] = useState<string>("2");
 
   const { data: tours, isLoading } = useTours();
   const { data: stats } = useTourStats();
@@ -84,7 +91,12 @@ const Tours = () => {
       tour.cities?.name?.toLowerCase().includes(query) ||
       tour.cities?.country?.toLowerCase().includes(query)
     );
-    const matchesCountry = selectedCountry === "all" || tour.cities?.country === selectedCountry;
+    let matchesCountry = true;
+    if (selectedCountry === "top_deal") {
+      matchesCountry = (tour as any).is_featured === true;
+    } else if (selectedCountry !== "all") {
+      matchesCountry = tour.cities?.country === selectedCountry;
+    }
     return matchesSearch && matchesCountry;
   }) || []).sort((a, b) => {
     switch (sortBy) {
@@ -190,87 +202,114 @@ const Tours = () => {
               </div>
             </div>
 
-            {/* Search Card - floating over hero */}
-            <div className="relative -mt-12 mx-4 sm:mx-12 mb-6 z-10 group/search">
-              <div className="bg-card/40 backdrop-blur-3xl rounded-3xl shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] border border-white/10 p-5 sm:p-6 transition-all duration-500 group-hover/search:shadow-primary/10">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center border border-primary/20">
-                    <Search className="h-5 w-5 text-primary animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-foreground tracking-tight">Explore Destinations</h3>
-                    <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-widest">Find your next adventure</p>
-                  </div>
-                </div>
-                <div className="flex flex-col lg:flex-row gap-4">
-                  <div className="relative flex-1 group/input">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within/input:text-primary transition-colors">
-                      <Search className="h-full w-full" />
+            {/* Search Bar - Premium Pill Design */}
+            <div className="relative -mt-10 mx-auto max-w-5xl z-10 px-4">
+              <div className="bg-white dark:bg-card rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-border/40 p-2 flex items-center justify-between transition-all duration-300 hover:shadow-[0_8px_40px_rgb(0,0,0,0.16)]">
+                <div className="flex-1 flex items-center h-14">
+                  
+                  {/* Location */}
+                  <div className="flex-1 flex items-center px-6 gap-3 h-full border-r border-border hover:bg-muted/30 rounded-l-full cursor-pointer transition-colors relative group">
+                    <MapPin className="h-5 w-5 text-primary shrink-0" />
+                    <div className="flex flex-col flex-1 min-w-0 justify-center">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Location</span>
+                      <Select value={searchQuery} onValueChange={(val) => setSearchQuery(val === "all" ? "" : val)}>
+                        <SelectTrigger className="border-0 bg-transparent focus:ring-0 focus:ring-offset-0 px-0 shadow-none h-5 w-full font-bold text-[15px] p-0 m-0 !bg-transparent hover:bg-transparent [&>span]:line-clamp-1 text-foreground">
+                          <SelectValue placeholder="Where to?" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl shadow-xl">
+                          <SelectItem value="all" className="font-medium">Anywhere</SelectItem>
+                          {countries.map(c => (
+                            <SelectItem key={c} value={c} className="font-medium">{c}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <Input 
-                      placeholder="Search by tour name, city, or country..." 
-                      className="pl-12 rounded-2xl h-12 bg-background/50 border-border/40 focus:ring-primary/20 text-sm font-medium transition-all" 
-                      value={searchQuery} 
-                      onChange={(e) => setSearchQuery(e.target.value)} 
-                    />
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-4 lg:w-auto">
-                    <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                      <SelectTrigger className="w-full sm:w-[220px] rounded-2xl h-12 bg-background/50 border-border/40 font-bold text-sm">
-                        <Globe className="h-4 w-4 mr-2 text-primary" />
-                        <SelectValue placeholder="All Countries" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-2xl border-white/10 backdrop-blur-xl">
-                        <SelectItem value="all">All Countries</SelectItem>
-                        {countries.map(c => (
-                          <SelectItem key={c} value={c}>
-                            <span className="flex items-center gap-3">
-                              {getCountryFlagUrl(c) && <img src={getCountryFlagUrl(c)!} alt="" className="h-4 w-auto rounded-sm shadow-sm" />}
-                              <span className="font-semibold">{c}</span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={sortBy} onValueChange={setSortBy}>
-                      <SelectTrigger className="w-full sm:w-[200px] rounded-2xl h-12 bg-background/50 border-border/40 font-bold text-sm">
-                        <ArrowUpDown className="h-4 w-4 mr-2 text-primary" />
-                        <SelectValue placeholder="Sort by" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-2xl border-white/10 backdrop-blur-xl">
-                        <SelectItem value="default">Recommended</SelectItem>
-                        <SelectItem value="price-low">Price: Low to High</SelectItem>
-                        <SelectItem value="price-high">Price: High to Low</SelectItem>
-                        <SelectItem value="duration">Duration: Shortest</SelectItem>
-                        <SelectItem value="name">Name: A–Z</SelectItem>
-                      </SelectContent>
-                    </Select>
+
+                  {/* Dates */}
+                  <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                    <PopoverTrigger className="flex-1 flex items-center px-6 gap-3 h-full border-r border-border hover:bg-muted/30 cursor-pointer transition-colors text-left outline-none group">
+                      <Calendar className="h-5 w-5 text-primary shrink-0" />
+                      <div className="flex flex-col flex-1 min-w-0 justify-center">
+                         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Date</span>
+                         <span className={`font-bold text-[15px] h-5 flex items-center truncate ${searchDate ? 'text-foreground' : 'text-muted-foreground'}`}>
+                           {searchDate ? format(searchDate, "dd MMM yyyy") : "Any day"}
+                         </span>
+                      </div>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 rounded-xl shadow-xl border-border/50" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={searchDate}
+                        onSelect={(d) => {
+                          setSearchDate(d);
+                          setDateOpen(false);
+                        }}
+                        initialFocus
+                        className="p-3 pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Guests */}
+                  <div className="flex-1 flex items-center px-6 gap-3 h-full hover:bg-muted/30 cursor-pointer transition-colors rounded-r-full mr-2 relative group">
+                    <Users className="h-5 w-5 text-primary shrink-0" />
+                    <div className="flex flex-col flex-1 min-w-0 justify-center">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Guests</span>
+                      <Select value={searchGuests} onValueChange={setSearchGuests}>
+                        <SelectTrigger className="border-0 bg-transparent focus:ring-0 focus:ring-offset-0 px-0 shadow-none h-5 w-full font-bold text-[15px] p-0 m-0 !bg-transparent hover:bg-transparent [&>span]:line-clamp-1 text-foreground">
+                          <SelectValue placeholder="Add guests" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl shadow-xl">
+                          <SelectItem value="1" className="font-medium">1 Adult</SelectItem>
+                          <SelectItem value="2" className="font-medium">2 Adults</SelectItem>
+                          <SelectItem value="3" className="font-medium">3 Adults</SelectItem>
+                          <SelectItem value="4" className="font-medium">4 Adults</SelectItem>
+                          <SelectItem value="5" className="font-medium">5+ Adults</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
+
                 </div>
+                <Button className="rounded-full px-8 h-14 font-bold shadow-md bg-gradient-to-r from-blue-600 to-primary hover:opacity-90 transition-opacity flex-shrink-0 text-base text-white relative overflow-hidden group">
+                  <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                  <Search className="h-5 w-5 mr-2 relative z-10" /> 
+                  <span className="relative z-10">Search</span>
+                </Button>
               </div>
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-8 mb-6 px-4">
+              <Button 
+                variant={selectedCountry === "all" ? "navy" : "outline"} 
+                className={`rounded-full px-6 ${selectedCountry === "all" ? "shadow-md" : "bg-white dark:bg-card"}`}
+                onClick={() => setSelectedCountry("all")}
+              >
+                All Tours
+              </Button>
+              <Button 
+                variant={selectedCountry === "top_deal" ? "navy" : "outline"} 
+                className={`rounded-full px-6 ${selectedCountry === "top_deal" ? "shadow-md" : "bg-white dark:bg-card"}`}
+                onClick={() => setSelectedCountry("top_deal")}
+              >
+                Top deal
+              </Button>
+              {countries.slice(0, 5).map(country => (
+                <Button 
+                  key={country}
+                  variant={selectedCountry === country ? "navy" : "outline"} 
+                  className={`rounded-full px-6 ${selectedCountry === country ? "shadow-md" : "bg-white dark:bg-card"}`}
+                  onClick={() => setSelectedCountry(country)}
+                >
+                  {country} deals
+                </Button>
+              ))}
             </div>
           </div>
 
-          {/* Stats Pills */}
-          {isAdmin && (
-            <div className="flex flex-wrap gap-3 px-4 sm:px-6 mb-4">
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 shadow-sm">
-                <Compass className="h-4 w-4 text-primary" />
-                <span className="text-sm font-bold">{stats?.total ?? 0}</span>
-                <span className="text-xs text-muted-foreground">Total</span>
-              </div>
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 shadow-sm">
-                <CheckCircle className="h-4 w-4 text-emerald-500" />
-                <span className="text-sm font-bold">{stats?.active ?? 0}</span>
-                <span className="text-xs text-muted-foreground">Active</span>
-              </div>
-              {isAdmin && (
-                <Button variant="navy" size="sm" onClick={() => setFormOpen(true)} className="rounded-xl ml-auto">
-                  <Plus className="h-4 w-4 mr-1.5" />Add Tour
-                </Button>
-              )}
-            </div>
-          )}
+
 
           {/* Results Header */}
           <div className="px-4 sm:px-6 mb-4">
@@ -374,260 +413,118 @@ const Tours = () => {
               ))}
             </div>
           ) : filteredTours.length === 0 ? (
-            <EmptyState icon={Compass} title="No tours found" description={isAdmin ? "Get started by adding your first tour experience." : "No tours match your search criteria."} actionLabel={isAdmin ? "Add New Tour" : undefined} onAction={isAdmin ? () => setFormOpen(true) : undefined} />
+            <div className="py-24 text-center">
+              <Compass className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+              <h3 className="text-lg font-bold">No tours found</h3>
+              <p className="text-muted-foreground">Try adjusting your search criteria</p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredTours.map((tour, index) => {
-                const isExpanded = expandedTourId === tour.id;
-                const dayProgram = getDayProgram(tour);
+                // Remove hardcoded fields to match back-office capabilities
+
                 return (
                   <Card 
                     key={tour.id} 
-                    className={`group relative overflow-hidden transition-all duration-500 border-0 bg-card/40 backdrop-blur-md animate-fade-in flex flex-col rounded-2xl ${
-                      isExpanded 
-                        ? 'lg:col-span-2 ring-1 ring-primary/20 shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)]' 
-                        : 'shadow-sm hover:shadow-2xl hover:-translate-y-1'
-                    }`}
+                    className="group relative overflow-hidden transition-all duration-300 border-border bg-card shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-pointer flex flex-col rounded-2xl"
                     style={{ animationDelay: `${index * 40}ms` }}
+                    onClick={() => {
+                      if (!isAdmin) {
+                        navigate(`/tours/${tour.id}`);
+                      }
+                    }}
                   >
-                    {/* Background Glow Effect */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    
-                    {/* Image Container with Floating Badges */}
-                    <div className={`relative overflow-hidden ${isExpanded ? 'h-64' : 'h-48'} transition-all duration-500`}>
-                      {tour.images && tour.images.length > 1 ? (
-                        <ImageCarousel images={tour.images} autoPlay={isExpanded} showDots={isExpanded} showArrows={isExpanded} className="h-full" />
-                      ) : tour.images && tour.images[0] ? (
+                    {/* Image Container */}
+                    <div className="relative h-48 overflow-hidden">
+                      {tour.images && tour.images[0] ? (
                         <img 
                           src={tour.images[0]} 
                           alt={tour.name} 
-                          className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" 
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
-                          <Compass className="h-16 w-16 text-primary/20 animate-pulse" />
+                        <div className="w-full h-full flex items-center justify-center bg-muted">
+                          <Compass className="h-12 w-12 text-muted-foreground/30" />
                         </div>
                       )}
                       
-                      {/* Premium Overlays */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80" />
-                      
-                      {/* Floating Location & Country */}
-                      <div className="absolute top-4 left-4 flex flex-col gap-2">
-                        {tour.cities?.country && (
-                          <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md rounded-full pl-1 pr-3 py-1 border border-white/10 shadow-lg translate-y-0 group-hover:-translate-y-1 transition-transform duration-500">
-                            <div className="h-6 w-6 rounded-full overflow-hidden border border-white/20">
-                              {getCountryFlagUrl(tour.cities.country) ? (
-                                <img src={getCountryFlagUrl(tour.cities.country)!} alt="" className="w-full h-full object-cover scale-150" />
-                              ) : (
-                                <Globe className="h-full w-full p-1 text-white/50" />
-                              )}
-                            </div>
-                            <span className="text-[10px] font-bold text-white tracking-wider uppercase">{tour.cities.country}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-1.5 bg-primary/20 backdrop-blur-md rounded-full px-3 py-1 border border-primary/30 text-white shadow-lg translate-y-0 group-hover:-translate-y-1 transition-transform duration-500 delay-75">
-                          <MapPin className="h-3 w-3 text-primary-light" />
-                          <span className="text-[10px] font-bold tracking-tight">{tour.cities?.name || 'Exploration'}</span>
-                        </div>
+                      {/* Top Badges */}
+                      <div className="absolute top-3 left-3 right-3 flex justify-end items-start z-10">
+                        <button className="h-8 w-8 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md text-muted-foreground hover:text-coral transition-colors">
+                          <Heart className="h-4 w-4" />
+                        </button>
                       </div>
 
-                      {/* Floating Price Badge */}
-                      <div className="absolute top-4 right-4 bg-white dark:bg-navy-dark rounded-2xl p-2 shadow-2xl border border-border/50 translate-y-0 group-hover:-translate-y-1 transition-transform duration-500">
-                        <div className="flex flex-col items-center">
-                          <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-tighter">Starting At</span>
-                          <span className="text-lg font-bold text-primary leading-none">${tour.price}</span>
-                        </div>
-                      </div>
-
-                      {/* Status & Gallery Badges */}
-                      <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-                        <div className="flex gap-2">
-                          {isAdmin && (
-                            <Badge className={`rounded-full px-2 py-0 h-5 text-[9px] font-bold tracking-widest uppercase border border-white/10 ${tour.is_active ? 'bg-success/80' : 'bg-muted/80'}`}>
-                              {tour.is_active ? 'Active' : 'Draft'}
-                            </Badge>
-                          )}
-                          {dayProgram.length > 0 && (
-                            <Badge className="bg-white/10 backdrop-blur-md rounded-full px-2 py-0 h-5 text-[9px] font-bold text-white border border-white/10">
-                              <Calendar className="h-2.5 w-2.5 mr-1" />
-                              {dayProgram.length} Days
-                            </Badge>
-                          )}
-                        </div>
-                        {tour.images && tour.images.length > 1 && (
-                          <div className="bg-black/40 backdrop-blur-md rounded-lg px-2 py-1 flex items-center gap-1.5 border border-white/10">
-                            <Camera className="h-3 w-3 text-white/70" />
-                            <span className="text-[10px] font-bold text-white/90">{tour.images.length} Photos</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Content Section */}
-                    <CardContent className="p-5 flex flex-col flex-1 relative z-10">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="space-y-1">
-                          <h3 className="font-bold text-lg leading-tight group-hover:text-primary transition-colors duration-300">
-                            {tour.name}
-                          </h3>
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Clock className="h-3.5 w-3.5" />
-                              <span className="text-xs font-medium">{tour.duration_hours || 4} Hours</span>
-                            </div>
-                            <Separator orientation="vertical" className="h-3" />
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Users className="h-3.5 w-3.5" />
-                              <span className="text-xs font-medium">Up to {tour.max_participants || 20}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Highlights / Includes */}
-                      {!isExpanded && tour.includes && tour.includes.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {tour.includes.slice(0, 3).map((item, idx) => (
-                            <span key={idx} className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-lg bg-primary/5 text-primary-foreground/70 font-bold border border-primary/10">
-                              <Sparkles className="h-2.5 w-2.5 text-primary" />
-                              {item}
-                            </span>
-                          ))}
-                          {tour.includes.length > 3 && (
-                            <span className="text-[10px] px-2.5 py-1 rounded-lg bg-muted text-muted-foreground font-bold">
-                              +{tour.includes.length - 3} More
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Description Snippet */}
-                      {!isExpanded && tour.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed mb-6">
-                          {tour.description}
-                        </p>
-                      )}
-
-                      {/* Expanded Section */}
-                      <Collapsible open={isExpanded} onOpenChange={() => toggleTourExpansion(tour.id)}>
-                        <CollapsibleContent className="space-y-6 pt-2 pb-6 animate-in fade-in slide-in-from-top-2 duration-500">
-                          {tour.description && (
-                            <div className="space-y-2">
-                              <h4 className="text-xs font-bold uppercase tracking-widest text-primary">Overview</h4>
-                              <p className="text-sm text-muted-foreground leading-relaxed">{tour.description}</p>
-                            </div>
-                          )}
-
-                          {/* Interactive Itinerary */}
-                          {dayProgram.length > 0 && (
-                            <div className="space-y-4">
-                              <h4 className="text-xs font-bold uppercase tracking-widest text-primary">Tour Program</h4>
-                              <div className="grid grid-cols-1 gap-4">
-                                {dayProgram.map((day, dIdx) => (
-                                  <div key={dIdx} className="group/day relative flex gap-4 p-4 rounded-2xl bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors duration-300">
-                                    <div className="flex flex-col items-center">
-                                      <div className="h-10 w-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold shadow-lg shadow-primary/20">
-                                        {day.day}
-                                      </div>
-                                      {dIdx < dayProgram.length - 1 && (
-                                        <div className="w-0.5 h-full bg-border mt-2" />
-                                      )}
-                                    </div>
-                                    <div className="space-y-2">
-                                      <h5 className="font-bold text-sm">{day.title}</h5>
-                                      <p className="text-xs text-muted-foreground leading-relaxed">{day.description}</p>
-                                      {day.activities && day.activities.length > 0 && (
-                                        <div className="flex flex-wrap gap-2 pt-1">
-                                          {day.activities.map((act, aIdx) => (
-                                            <span key={aIdx} className="text-[10px] bg-background/50 rounded-md px-2 py-0.5 border border-border/50 flex items-center gap-1">
-                                              <CheckCircle className="h-2 w-2 text-success" />
-                                              {act}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Full Includes */}
-                          {tour.includes && tour.includes.length > 0 && (
-                            <div className="space-y-3">
-                              <h4 className="text-xs font-bold uppercase tracking-widest text-primary">What's Included</h4>
-                              <div className="grid grid-cols-2 gap-2">
-                                {tour.includes.map((inc, iIdx) => (
-                                  <div key={iIdx} className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
-                                    <div className="h-5 w-5 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                                      <CheckCircle className="h-3 w-3 text-emerald-500" />
-                                    </div>
-                                    <span className="text-xs font-medium">{inc}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </CollapsibleContent>
-                      </Collapsible>
-
-                      <div className="flex-1" />
-
-                      {/* Action Command Bar */}
-                      <div className="flex items-center gap-3 pt-4 mt-auto border-t border-border/50">
-                        <Button 
-                          variant="ghost" 
-                          className="h-10 px-4 rounded-xl text-xs font-bold gap-2 group/btn" 
-                          onClick={() => toggleTourExpansion(tour.id)}
-                        >
-                          {isExpanded ? (
-                            <><ChevronUp className="h-4 w-4" /> Collapse</>
-                          ) : (
-                            <><Eye className="h-4 w-4 group-hover/btn:text-primary transition-colors" /> Details</>
-                          )}
-                        </Button>
-                        <Button 
-                          className="flex-1 h-10 rounded-xl font-bold gap-2 shadow-xl shadow-primary/20 active:scale-95 transition-transform" 
-                          variant="navy"
-                          onClick={() => handleBook(tour)}
-                          disabled={!tour.is_active}
-                        >
-                          <ShoppingCart className="h-4 w-4" />
-                          Book Experience
-                        </Button>
-                        {isAdmin && (
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="outline" 
-                              className="h-10 w-10 p-0 rounded-xl hover:bg-primary/5 hover:text-primary transition-all"
-                              onClick={() => handleEdit(tour)}
+                      {isAdmin && (
+                        <div className="absolute bottom-3 right-3 z-10 flex gap-2">
+                           <Button 
+                              variant="secondary" 
+                              size="sm"
+                              className="h-8 w-8 p-0 rounded-full bg-white/90 shadow-md"
+                              onClick={(e) => { e.stopPropagation(); handleEdit(tour); }}
                             >
-                              <Edit className="h-4 w-4" />
+                              <Edit className="h-4 w-4 text-foreground" />
                             </Button>
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button 
-                                  variant="outline" 
-                                  className="h-10 w-10 p-0 rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10 transition-all"
+                                  variant="destructive" 
+                                  size="sm"
+                                  className="h-8 w-8 p-0 rounded-full shadow-md"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </AlertDialogTrigger>
-                              <AlertDialogContent>
+                              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Delete Tour</AlertDialogTitle>
                                   <AlertDialogDescription>Are you sure you want to delete "{tour.name}"? This action cannot be undone.</AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteTour(tour.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                                  <AlertDialogAction onClick={() => handleDeleteTour(tour.id)} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Content Section */}
+                    <CardContent className="p-4 flex flex-col flex-grow">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-2 uppercase tracking-wide">
+                        <MapPin className="h-3 w-3" />
+                        <span className="truncate">{tour.cities?.name || "Multiple"} {tour.cities?.country ? `, ${tour.cities.country}` : ""}</span>
+                      </div>
+                      
+                      <h3 className="font-bold text-foreground text-base leading-tight mb-2 line-clamp-2 group-hover:text-primary transition-colors">
+                        {tour.name}
+                      </h3>
+
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mt-auto mb-4">
+                        <span className="flex items-center gap-1 bg-muted/30 px-2 py-1 rounded-md"><Calendar className="h-3.5 w-3.5"/> {tour.duration_hours ? Math.ceil(tour.duration_hours/24) : 1} days</span>
+                      </div>
+
+                      <div className="pt-3 border-t border-border flex items-center justify-between mt-auto">
+                        <div>
+                          <p className="text-xs text-muted-foreground font-medium mb-0.5">From</p>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-xl font-black text-foreground">${tour.price}</span>
                           </div>
-                        )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="navy"
+                          className="rounded-xl px-4 font-semibold text-xs shadow-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBook(tour);
+                          }}
+                        >
+                          <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
+                          Book
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>

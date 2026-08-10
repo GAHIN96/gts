@@ -65,7 +65,7 @@ export function usePnrBooking(id: string) {
         .from("pnr_bookings")
         .select("*, pnr_passengers(*), pnr_booking_changes(*)")
         .eq("id", id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
       return data as unknown as PnrBooking;
     },
@@ -102,7 +102,7 @@ export function useCreatePnrBooking() {
           user_id: user.id,
         })
         .select()
-        .single();
+        ;
       if (error) throw error;
 
       if (input.passengers.length > 0) {
@@ -119,7 +119,7 @@ export function useCreatePnrBooking() {
       }
 
       // Log creation
-      const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).single();
+      const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id);
       await supabase.from("pnr_booking_changes").insert({
         pnr_booking_id: booking.id,
         change_type: "Booking Created",
@@ -155,11 +155,11 @@ export function useUpdatePnrBooking() {
         .update({ ...updates, is_modified: true })
         .eq("id", id)
         .select()
-        .single();
+        ;
       if (error) throw error;
 
       if (changes && changes.length > 0 && user) {
-        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).single();
+        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id);
         await supabase.from("pnr_booking_changes").insert(
           changes.map((c) => ({
             pnr_booking_id: id,
@@ -173,7 +173,7 @@ export function useUpdatePnrBooking() {
           }))
         );
       }
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pnr-bookings"] });
@@ -210,13 +210,13 @@ export function useAddPnrPassenger() {
         first_name: input.first_name,
         last_name: input.last_name,
         ticket_number: input.ticket_number || null,
-      }).select().single();
+      }).select();
       if (error) throw error;
 
       // Mark booking as modified & log change
       await supabase.from("pnr_bookings").update({ is_modified: true }).eq("id", input.pnr_booking_id);
       if (user) {
-        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).single();
+        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id);
         await supabase.from("pnr_booking_changes").insert({
           pnr_booking_id: input.pnr_booking_id,
           change_type: "Passenger Added",
@@ -245,7 +245,7 @@ export function useRemovePnrPassenger() {
 
       await supabase.from("pnr_bookings").update({ is_modified: true }).eq("id", bookingId);
       if (user) {
-        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).single();
+        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id);
         await supabase.from("pnr_booking_changes").insert({
           pnr_booking_id: bookingId,
           change_type: "Passenger Removed",

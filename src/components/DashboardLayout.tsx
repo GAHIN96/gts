@@ -52,17 +52,21 @@ const MobileBottomNav = () => {
   );
 };
 
+import { useMockDataInserter } from "@/hooks/useMockDataInserter";
+
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const { role } = useAuth();
   const isAdmin = role === "admin" || role === "finance";
+  
+  useMockDataInserter();
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-background">
+      <div className="h-screen overflow-hidden flex w-full bg-background">
         <AppSidebar />
-        <SidebarInset className="flex-1 flex flex-col">
+        <SidebarInset className="flex-1 flex flex-col overflow-hidden">
           <DashboardHeader />
-          <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto relative">
+          <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-y-auto relative">
             {children}
           </main>
         </SidebarInset>

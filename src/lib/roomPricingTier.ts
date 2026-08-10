@@ -40,6 +40,8 @@ export interface SpecialPriceLike {
   price_child_6_12?: number | null;
   price_child_2_6?: number | null;
   price_infant?: number | null;
+  room_from?: number | null;
+  room_to?: number | null;
 }
 
 const norm = (s: string | null | undefined) => (s || "").trim().toLowerCase();
@@ -90,7 +92,7 @@ export function pickRoomBand<T extends RoomLike>(
     return n >= lo && n <= hi;
   };
 
-  let matches = candidates.filter((r) => inBand(r, req));
+  const matches = candidates.filter((r) => inBand(r, req));
 
   if (matches.length > 0) {
     // Multiple bands matched — prefer the lower-inventory / higher-price tier
@@ -148,15 +150,30 @@ export function resolveRoomPrice(
 
   // Step 4: Special Prices Priority
   const special = (specials || []).find((s) => {
-    if (s.room_id && picked.id && s.room_id !== picked.id) return false;
+    // Check dates
     const from = (s.from_date || "0000-00-00").split('T')[0];
     const to = (s.to_date || "9999-99-99").split('T')[0];
-    return nightStr >= from && nightStr <= to;
+    if (nightStr < from || nightStr > to) return false;
+
+    // Resolve room type of this special price
+    const specialRoom = (rooms || []).find(r => r.id === s.room_id);
+    const spRoomType = specialRoom?.room_type;
+    
+    // Check if it applies to the requested room type
+    if (norm(spRoomType) !== norm(roomType)) return false;
+
+    // Check inventory band using its own room_from / room_to if defined, otherwise fallback to the linked room's band
+    const sTo = Number(s.room_to ?? specialRoom?.room_to ?? 1);
+    const sFrom = Number(s.room_from ?? specialRoom?.room_from ?? Number.MAX_SAFE_INTEGER);
+    const lo = Math.min(sTo, sFrom);
+    const hi = Math.max(sTo, sFrom);
+    
+    return inventoryRemaining >= lo && inventoryRemaining <= hi;
   });
 
   if (special) {
     return {
-      adult: Number(special.room_rate || special.price_adult || picked.price_adult || picked.price_per_night || 0),
+      adult: Number(special.room_rate || special.price_per_night || special.price_adult || picked.price_per_night || picked.price_adult || 0),
       child6: Number(special.price_child_6_12 || picked.price_child_6 || 0),
       child2: Number(special.price_child_2_6 || picked.price_child || 0),
       infant: Number(special.price_infant || picked.price_infant || 0),
@@ -165,7 +182,7 @@ export function resolveRoomPrice(
 
   // Phase 3: Final Output (Default Prices)
   return {
-    adult: Number(picked.price_adult || picked.price_per_night || 0),
+    adult: Number(picked.price_per_night || picked.price_adult || 0),
     child6: Number(picked.price_child_6 || 0),
     child2: Number(picked.price_child || 0),
     infant: Number(picked.price_infant || 0),

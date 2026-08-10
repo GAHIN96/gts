@@ -62,7 +62,7 @@ export function usePayment(id: string) {
           )
         `)
         .eq("id", id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       return data as Payment;
@@ -86,10 +86,10 @@ export function useCreatePayment() {
           user_id: user.id,
         })
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
@@ -115,7 +115,7 @@ export function useApprovePayment() {
         })
         .eq("id", id)
         .select("booking_id")
-        .single();
+        ;
 
       if (paymentError) throw paymentError;
 
@@ -161,7 +161,7 @@ export function useRejectPayment() {
         })
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
 
@@ -193,10 +193,10 @@ export function useUpdatePayment() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });

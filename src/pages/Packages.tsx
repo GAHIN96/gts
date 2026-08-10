@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { GroupPackageForm } from "@/components/admin/GroupPackageForm";
-import { 
-  Plus, 
-  Search, 
-  Filter, 
+import { isAbortError } from "@/utils/errorUtils";
+import {
+  Plus,
+  Search,
+  Filter,
   MapPin,
   Calendar,
   Users,
@@ -135,12 +136,12 @@ const Packages = () => {
   // Build cities data for CityGrid
   const citiesData = useMemo(() => {
     if (!packages) return [];
-    
+
     const cityMap = packages.reduce((acc, pkg) => {
       const cityId = pkg.city_id;
       const cityName = pkg.cities?.name || "Unknown";
       const cityCountry = pkg.cities?.country || "";
-      
+
       if (!acc[cityId]) {
         acc[cityId] = {
           id: cityId,
@@ -155,20 +156,20 @@ const Packages = () => {
       acc[cityId].startingPrice = Math.min(acc[cityId].startingPrice, pkg.starting_price);
       return acc;
     }, {} as Record<string, { id: string; name: string; country: string; image_url?: string | null; startingPrice: number; packageCount: number }>);
-    
+
     return Object.values(cityMap);
   }, [packages]);
 
   // Filter packages by search and selected city
   const filteredPackages = useMemo(() => {
     return packages?.filter((pkg) => {
-      const matchesSearch = !searchQuery || 
+      const matchesSearch = !searchQuery ||
         pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pkg.cities?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pkg.cities?.country?.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       const matchesCity = !selectedCity || pkg.city_id === selectedCity;
-      
+
       return matchesSearch && matchesCity;
     });
   }, [packages, searchQuery, selectedCity]);
@@ -237,7 +238,7 @@ const Packages = () => {
   const totalDestinations = citiesData.length;
   const totalPackages = packages?.length || 0;
 
-  if (error) {
+  if (error && !isAbortError(error)) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <h2 className="text-xl font-semibold text-foreground mb-2">Error loading packages</h2>
@@ -386,18 +387,7 @@ const Packages = () => {
   return (
     <div className="space-y-10">
 
-      {/* Top action bar */}
-      {isAdmin && (
-        <div className="flex justify-end">
-          <Button 
-            onClick={handleAddPackage}
-            className="rounded-xl h-10 px-5 font-semibold gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Add New Package
-          </Button>
-        </div>
-      )}
+      {/* Top action bar removed per request */}
 
       {/* Package Form Dialog */}
       <GroupPackageForm
@@ -408,6 +398,24 @@ const Packages = () => {
         }}
         pkg={editingPackage}
       />
+
+      {/* ═══ City Grid ═══ */}
+      {!selectedCity && (
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <SectionHeader title="Popular Destinations" subtitle="Select a destination to view available packages" />
+          </div>
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[...Array(6)].map((_, i) => (
+                <Skeleton key={i} className="h-64 rounded-3xl" />
+              ))}
+            </div>
+          ) : (
+            <CityGrid cities={citiesData} onCitySelect={handleCitySelect} />
+          )}
+        </div>
+      )}
 
       {/* ═══ Hero Section ═══ */}
       <div className="relative rounded-2xl overflow-hidden shadow-xl h-[200px] md:h-[220px]">
@@ -454,24 +462,6 @@ const Packages = () => {
         )}
       </div>
 
-      {/* ═══ City Grid ═══ */}
-      {!selectedCity && (
-        <div>
-          <div className="flex items-center justify-between mb-6">
-            <SectionHeader title="Popular Destinations" subtitle="Select a destination to view available packages" />
-          </div>
-          {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {[...Array(6)].map((_, i) => (
-                <Skeleton key={i} className="h-64 rounded-3xl" />
-              ))}
-            </div>
-          ) : (
-            <CityGrid cities={citiesData} onCitySelect={handleCitySelect} />
-          )}
-        </div>
-      )}
-
       {/* ═══ Packages Section ═══ */}
       {(selectedCity || searchQuery) && (
         <div>
@@ -480,8 +470,8 @@ const Packages = () => {
             <div className="flex items-center gap-2">
               {selectedCity && (
                 <>
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     onClick={clearFilters}
                     className="text-muted-foreground hover:text-primary rounded-xl"
                   >
@@ -643,8 +633,8 @@ const Packages = () => {
                         availableSeats === 0
                           ? "text-destructive font-medium"
                           : availableSeats < 10
-                          ? "text-amber-600 font-medium"
-                          : "text-muted-foreground"
+                            ? "text-amber-600 font-medium"
+                            : "text-muted-foreground"
                       )}>
                         {availableSeats} seats left
                       </span>
@@ -721,7 +711,7 @@ const Packages = () => {
         >
           {/* Animated gradient border */}
           <div className="absolute -inset-[2px] rounded-3xl bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_100%] group-hover:animate-[shimmer_3s_linear_infinite] opacity-60 group-hover:opacity-100 transition-opacity duration-500 z-0" />
-          
+
           <div className="relative z-10 bg-gradient-to-r from-[hsl(var(--navy))] to-[hsl(var(--navy-light))] rounded-3xl px-8 py-7 flex items-center justify-between">
             <div className="flex items-center gap-5">
               <div className="h-14 w-14 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/10 shadow-lg">
@@ -732,8 +722,8 @@ const Packages = () => {
                 <p className="text-white/60 text-sm mt-0.5">Create a custom group trip — pick dates, flights, hotel & transfers</p>
               </div>
             </div>
-            <Button 
-              variant="secondary" 
+            <Button
+              variant="secondary"
               className="rounded-xl gap-2 font-semibold group-hover:bg-white group-hover:text-primary transition-colors h-11 px-6 shadow-lg"
             >
               Get Started
@@ -748,8 +738,8 @@ const Packages = () => {
         <div>
           <div className="flex items-center justify-between mb-6">
             <SectionHeader title="Featured Packages" subtitle="Our most popular travel experiences" />
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="rounded-xl border-primary/30 text-primary hover:bg-primary/5"
               onClick={() => setSearchParams({ city: citiesData[0]?.id })}
             >
@@ -757,7 +747,7 @@ const Packages = () => {
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {packages.slice(0, 6).map((pkg, cardIndex) => {
               const nextDeparture = getNextDeparture(pkg.package_departures);

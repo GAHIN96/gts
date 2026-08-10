@@ -2,9 +2,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { SectionGuard } from "@/components/SectionGuard";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import DashboardLayout from "./components/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
@@ -13,10 +14,10 @@ import BookPackage from "./pages/BookPackage";
 import Flights from "./pages/Flights";
 import Hotels from "./pages/Hotels";
 import Tours from "./pages/Tours";
+import TourDetail from "./pages/TourDetail";
 import Visas from "./pages/Visas";
 import Transfers from "./pages/Transfers";
-import SpecialRequests from "./pages/SpecialRequests";
-import AdditionalServices from "./pages/AdditionalServices";
+import RequestsAndServices from "./pages/RequestsAndServices";
 // Payments page removed - integrated into FinanceCenter
 import Bookings from "./pages/Bookings";
 import BookingHistory from "./pages/BookingHistory";
@@ -56,7 +57,19 @@ const BookingDetailRouter = () => {
   }
   return <BookingDetail />;
 };
-const queryClient = new QueryClient();
+import { isAbortError } from "@/utils/errorUtils";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error: any) => {
+        if (isAbortError(error)) return false;
+        return failureCount < 2;
+      },
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <ThemeProvider defaultTheme="light" storageKey="gts-travel-theme">
@@ -64,7 +77,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <HashRouter>
         <AuthProvider>
           <Routes>
             {/* Public route */}
@@ -86,7 +99,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <Packages />
+                    <SectionGuard sectionKey="packages" sectionName="Group Packages">
+                      <Packages />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -100,7 +115,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <BookPackage />
+                    <SectionGuard sectionKey="packages" sectionName="Group Packages">
+                      <BookPackage />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -110,7 +127,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <BuildCustomGroup />
+                    <SectionGuard sectionKey="build_custom" sectionName="Build Custom Group">
+                      <BuildCustomGroup />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -120,7 +139,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <BookCustomGroup />
+                    <SectionGuard sectionKey="build_custom" sectionName="Build Custom Group">
+                      <BookCustomGroup />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -140,7 +161,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <Flights />
+                    <SectionGuard sectionKey="flights" sectionName="Flights">
+                      <Flights />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -150,7 +173,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <BookFlight />
+                    <SectionGuard sectionKey="flights" sectionName="Flights">
+                      <BookFlight />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -160,7 +185,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <Hotels />
+                    <SectionGuard sectionKey="hotels" sectionName="Hotels">
+                      <Hotels />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -170,7 +197,21 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <Tours />
+                    <SectionGuard sectionKey="tours" sectionName="Tours">
+                      <Tours />
+                    </SectionGuard>
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tours/:id"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <SectionGuard sectionKey="tours" sectionName="Tours">
+                      <TourDetail />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -180,7 +221,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <Visas />
+                    <SectionGuard sectionKey="visas" sectionName="Visas">
+                      <Visas />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -190,27 +233,21 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <Transfers />
+                    <SectionGuard sectionKey="transfers" sectionName="Transfers">
+                      <Transfers />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/special-requests"
+              path="/requests-and-services"
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <SpecialRequests />
-                  </DashboardLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/additional-services"
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <AdditionalServices />
+                    <SectionGuard sectionKey="requests" sectionName="Requests & Services">
+                      <RequestsAndServices />
+                    </SectionGuard>
                   </DashboardLayout>
                 </ProtectedRoute>
               }
@@ -352,7 +389,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
-      </BrowserRouter>
+      </HashRouter>
     </TooltipProvider>
   </QueryClientProvider>
   </ThemeProvider>

@@ -64,10 +64,43 @@ export const countryToIso: Record<string, string> = {
   Colombia: "co",
   Chile: "cl",
   Peru: "pe",
+  "united kingdom": "gb",
+  "united arab emirates": "ae",
+  "turkiye": "tr",
+  "türkiye": "tr",
 };
 
-export function getCountryFlagUrl(country: string, width = 40): string | null {
-  const iso = countryToIso[country];
+export function getCountryFlagUrl(country: string, width?: number): string | null {
+  if (!country) return null;
+  const normalized = country.trim().toLowerCase();
+  
+  // Try exact match first
+  let iso = countryToIso[country];
+  
+  // If no exact match, try case-insensitive match
+  if (!iso) {
+    const entry = Object.entries(countryToIso).find(([k]) => k.toLowerCase() === normalized);
+    if (entry) iso = entry[1];
+  }
+  
   if (!iso) return null;
-  return `https://flagcdn.com/w${width}/${iso}.png`;
+  
+  // Use crisp PNG from FlagCDN to avoid browser SVG scaling rendering blur.
+  // We use at least 2x resolution of the target width for Retina/High-DPI support.
+  let size = "w80";
+  if (width) {
+    const targetWidth = width * 2; // 2x for Retina crispness
+    if (targetWidth <= 40) {
+      size = "w40";
+    } else if (targetWidth <= 80) {
+      size = "w80";
+    } else {
+      size = "w160";
+    }
+  } else {
+    // Default size when no width is specified
+    size = "w160";
+  }
+  
+  return `https://flagcdn.com/${size}/${iso}.png`;
 }

@@ -60,9 +60,9 @@ export function useCreateSeatBlock() {
         .from("flight_seat_blocks" as any)
         .insert(block)
         .select()
-        .single();
+        ;
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["flight-seat-blocks", variables.flight_id] });
@@ -80,9 +80,9 @@ export function useUpdateSeatBlock() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["flight-seat-blocks"] });

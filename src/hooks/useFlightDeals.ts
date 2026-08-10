@@ -84,10 +84,10 @@ export const useCreateFlightDeal = () => {
         .from('flight_deals')
         .insert(deal)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flight-deals'] });
@@ -105,10 +105,10 @@ export const useUpdateFlightDeal = () => {
         .update(updates)
         .eq('id', id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flight-deals'] });

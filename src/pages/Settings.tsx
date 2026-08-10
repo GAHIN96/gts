@@ -57,6 +57,7 @@ import {
 import { UniversalVoucher } from "@/components/booking/UniversalVoucher";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTermsConditions } from "@/hooks/useTermsConditions";
+import { ModuleActivationSettings } from "@/components/admin/ModuleActivationSettings";
 
 const TermsConditionsEditor = () => {
   const { settings: tcSettings, saveSettings: saveTcSettings } = useTermsConditions();
@@ -229,6 +230,9 @@ const Settings = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Settings */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Section & Module Activation Control - Admin Only */}
+          {isAdmin && <ModuleActivationSettings />}
+
           {/* Hero Slideshow Management - Admin Only */}
           {isAdmin && (
             <Card className="shadow-card">

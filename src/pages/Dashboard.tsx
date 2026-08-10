@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Package, 
   CreditCard, 
@@ -40,6 +40,7 @@ import { useDashboardStats, useRecentBookings, useUpcomingDepartures } from "@/h
 import { useDashboardSeries } from "@/hooks/useDashboardSeries";
 import { useAuditLogs } from "@/hooks/useAuditLogs";
 import { PendingApprovalsWidget } from "@/components/dashboard/PendingApprovalsWidget";
+import { MapTransferSearch } from "@/components/booking/MapTransferSearch";
 import { format, formatDistanceToNow, differenceInHours } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -704,6 +705,9 @@ const AgencyDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Transfer & Car Rental Search */}
+      <MapTransferSearch />
 
       {/* Quick Action Strip */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.internal-notification]
 verify_jwt = false
+
+[functions.fix-rls]
+verify_jwt = false

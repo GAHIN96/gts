@@ -19,7 +19,7 @@ interface FlightDealsCarouselProps {
 
 export function FlightDealsCarousel({ onDealClick }: FlightDealsCarouselProps) {
   const { data: deals } = useActiveFlightDeals();
-  const { airlines } = useAirlines();
+  const { getAirlineLogo } = useAirlines();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -46,11 +46,6 @@ export function FlightDealsCarousel({ onDealClick }: FlightDealsCarouselProps) {
 
   const scroll = (dir: "left" | "right") => {
     scrollRef.current?.scrollBy({ left: dir === "left" ? -320 : 320, behavior: "smooth" });
-  };
-
-  const getAirlineLogo = (name: string) => {
-    const match = airlines.find(a => a.is_active && a.name.toLowerCase() === name.toLowerCase());
-    return match?.logo_url || null;
   };
 
   if (activeDeals.length === 0) return null;

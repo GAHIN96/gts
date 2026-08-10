@@ -77,7 +77,7 @@ export const useUsersRoles = () => {
         .from('user_roles')
         .select('id')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (existingRole) {
         // Update existing role

@@ -57,6 +57,14 @@ import {
 } from "@/hooks/useAdditionalServices";
 import { ImageCarousel } from "@/components/ui/image-carousel";
 import { useBannerSettings } from "@/hooks/useBannerSettings";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { useBookings, useUpdateBooking, useCreateBooking } from "@/hooks/useBookings";
 import heroAdditionalServices from "@/assets/hero-special-requests.jpg";
 import { AdditionalServiceForm } from "@/components/admin/AdditionalServiceForm";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -153,8 +161,60 @@ const AdditionalServices = () => {
     return matchesSearch && matchesCategory;
   }) || [];
 
+  const [selectedService, setSelectedService] = useState<AdditionalService | null>(null);
+  const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
+  const [targetBookingId, setTargetBookingId] = useState<string>("");
+  const [paxCount, setPaxCount] = useState<number>(1);
+
+  const { data: userBookings } = useBookings();
+  const updateBooking = useUpdateBooking();
+  const createBooking = useCreateBooking();
+
   const handleAddToBooking = (service: AdditionalService) => {
-    toast.success(`${service.name} added to booking`);
+    setSelectedService(service);
+    setTargetBookingId("");
+    setPaxCount(1);
+    setBookingDialogOpen(true);
+  };
+
+  const handleConfirmAddService = async () => {
+    if (!selectedService) return;
+
+    try {
+      const calcPrice = selectedService.per_person ? selectedService.price * paxCount : selectedService.price;
+
+      if (targetBookingId && targetBookingId !== "new") {
+        const currentBooking = userBookings?.find(b => b.id === targetBookingId);
+        const existingNotes = currentBooking?.notes || "";
+        const updatedNotes = `${existingNotes}\n[Add-on Service]: ${selectedService.name} (${selectedService.category}) - $${calcPrice}`.trim();
+        
+        await updateBooking.mutateAsync({
+          id: targetBookingId,
+          notes: updatedNotes,
+          total_amount: Number(currentBooking?.total_amount || 0) + calcPrice,
+        });
+        toast.success(`Attached ${selectedService.name} to booking ${currentBooking?.booking_number}`);
+      } else {
+        const newBooking = await createBooking.mutateAsync({
+          booking_type: "flight", // default general type
+          total_amount: calcPrice,
+          passengers: paxCount,
+          status: "pending_payment",
+          notes: JSON.stringify({
+            service_id: selectedService.id,
+            service_name: selectedService.name,
+            category: selectedService.category,
+            per_person: selectedService.per_person,
+            price: calcPrice,
+          }),
+        });
+        toast.success(`Created service booking ${newBooking.booking_number}`);
+      }
+      setBookingDialogOpen(false);
+      setSelectedService(null);
+    } catch (error) {
+      toast.error("Failed to add service to booking");
+    }
   };
 
   const handleToggleStatus = async (service: AdditionalService) => {
@@ -191,6 +251,86 @@ const AdditionalServices = () => {
         service={editingService}
       />
 
+      {/* Add Service to Booking Dialog */}
+      <Dialog open={bookingDialogOpen} onOpenChange={setBookingDialogOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-primary" />
+              Add {selectedService?.name} to Booking
+            </DialogTitle>
+            <DialogDescription>
+              Select an existing booking to attach this service to, or create a standalone service order.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedService && (
+            <div className="space-y-4 pt-2">
+              <div className="p-3 bg-muted/50 rounded-xl border border-border/50 flex justify-between items-center">
+                <div>
+                  <h4 className="font-semibold text-foreground">{selectedService.name}</h4>
+                  <p className="text-xs text-muted-foreground capitalize">{selectedService.category}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-lg font-bold text-primary">${selectedService.price}</span>
+                  <span className="text-[10px] text-muted-foreground block">
+                    /{selectedService.per_person ? "person" : "booking"}
+                  </span>
+                </div>
+              </div>
+
+              {selectedService.per_person && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase text-muted-foreground">Number of Persons</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={paxCount}
+                    onChange={(e) => setPaxCount(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="rounded-xl"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Select Target Booking</label>
+                <Select value={targetBookingId} onValueChange={setTargetBookingId}>
+                  <SelectTrigger className="w-full rounded-xl">
+                    <SelectValue placeholder="Choose a booking..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="new" className="font-semibold text-primary">
+                      + Create Standalone Service Order
+                    </SelectItem>
+                    {userBookings?.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.booking_number} - ${b.total_amount} ({b.status})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-xs text-muted-foreground font-semibold uppercase">Total Charge:</span>
+                <span className="text-xl font-black text-primary">
+                  ${selectedService.per_person ? selectedService.price * paxCount : selectedService.price}
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3">
+                <Button variant="outline" onClick={() => setBookingDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="navy" onClick={handleConfirmAddService} disabled={!targetBookingId}>
+                  Confirm Add
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Admin header for manage view */}
       {isManageView && (
         <div className="flex items-center justify-between">
@@ -201,34 +341,7 @@ const AdditionalServices = () => {
         </div>
       )}
 
-      {/* Hero Section - hidden in manage view */}
-      {!isManageView && (
-        <>
-          <div className="relative rounded-2xl overflow-hidden h-[200px] md:h-[280px]">
-            <ImageCarousel images={heroImages} autoPlay interval={5000} aspectRatio="hero" className="h-full" showDots={heroImages.length > 1} showArrows={heroImages.length > 1} />
-            <div className="absolute inset-0 bg-gradient-to-r from-navy/80 via-navy/50 to-transparent flex items-center">
-              <div className="px-8 md:px-12 max-w-2xl">
-                <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">Additional Services</h1>
-                <p className="text-white/90 text-lg">{isAdmin ? "Manage add-on services for packages" : "Enhance your travel with extra services"}</p>
-                {isAdmin && (
-                  <Button variant="coral" className="mt-4 shadow-lg" onClick={() => setFormOpen(true)}><Plus className="h-4 w-4 mr-2" />Add Service</Button>
-                )}
-              </div>
-            </div>
-          </div>
 
-          {isAdmin && (
-            <div className="flex flex-wrap gap-3">
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
-                <BadgePlus className="h-4 w-4 text-primary" /><span className="text-sm font-semibold">{stats?.total ?? 0}</span><span className="text-xs text-muted-foreground">Total</span>
-              </div>
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
-                <Package className="h-4 w-4 text-success" /><span className="text-sm font-semibold">{stats?.active ?? 0}</span><span className="text-xs text-muted-foreground">Active</span>
-              </div>
-            </div>
-          )}
-        </>
-      )}
 
       {/* Admin Manage Table */}
       {isManageView ? (
@@ -299,25 +412,33 @@ const AdditionalServices = () => {
       ) : (
         <>
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search services..." className="pl-10 rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          <div className="flex flex-col md:flex-row gap-3 justify-between">
+            <div className="flex flex-1 flex-col md:flex-row gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search services..." className="pl-10 rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-full md:w-[200px] rounded-xl">
+                  <Filter className="h-4 w-4 mr-2 text-muted-foreground" /><SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="transfer">Transfer</SelectItem>
+                  <SelectItem value="insurance">Insurance</SelectItem>
+                  <SelectItem value="activity">Activity</SelectItem>
+                  <SelectItem value="meal">Meal</SelectItem>
+                  <SelectItem value="upgrade">Upgrade</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full md:w-[200px] rounded-xl">
-                <Filter className="h-4 w-4 mr-2 text-muted-foreground" /><SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="transfer">Transfer</SelectItem>
-                <SelectItem value="insurance">Insurance</SelectItem>
-                <SelectItem value="activity">Activity</SelectItem>
-                <SelectItem value="meal">Meal</SelectItem>
-                <SelectItem value="upgrade">Upgrade</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
+            {isAdmin && (
+              <Button variant="navy" className="rounded-xl shrink-0" onClick={() => setFormOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Service
+              </Button>
+            )}
           </div>
 
           {/* Services Grid */}

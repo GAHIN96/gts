@@ -32,10 +32,10 @@ export function useCreateDeparture() {
         .from("package_departures")
         .insert(departure)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["package-departures", data.package_id] });
@@ -55,10 +55,10 @@ export function useUpdateDeparture() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["package-departures", data.package_id] });

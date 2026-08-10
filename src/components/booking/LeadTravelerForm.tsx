@@ -59,7 +59,7 @@ export function LeadTravelerForm({
           .from("profiles")
           .select("full_name, email, phone")
           .eq("id", user.id)
-          .single();
+          .maybeSingle();
         if (profile) {
           if (profile.full_name && !form.getValues("fullName")) form.setValue("fullName", profile.full_name);
           if (profile.email && !form.getValues("email")) form.setValue("email", profile.email);

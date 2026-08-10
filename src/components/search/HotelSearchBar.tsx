@@ -100,7 +100,7 @@ export function HotelSearchBar({ onSearch }: HotelSearchBarProps) {
             <div className="md:col-span-3 space-y-2">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Destination</label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <MapPin className="absolute z-10 left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}

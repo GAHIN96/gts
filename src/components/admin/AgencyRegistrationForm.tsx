@@ -70,7 +70,7 @@ const AgencyRegistrationForm = ({ open, onOpenChange }: AgencyRegistrationFormPr
         .from("agencies")
         .select("id")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (existingAgency) {
         toast.error("You already have a registered agency");

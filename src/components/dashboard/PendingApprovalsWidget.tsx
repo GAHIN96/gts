@@ -36,7 +36,7 @@ export const PendingApprovalsWidget = () => {
         .from("profiles")
         .select("email")
         .eq("id", booking.user_id)
-        .single();
+        .maybeSingle();
 
       if (profile?.email) {
         await supabase.functions.invoke("booking-status-notification", {

@@ -31,6 +31,18 @@ import {
   Calendar,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useActiveSections, type ActiveSections } from "@/hooks/useActiveSections";
+
+const urlToSectionKey: Record<string, keyof ActiveSections> = {
+  "/transfers": "transfers",
+  "/tours": "tours",
+  "/requests-and-services": "requests",
+  "/special-requests": "requests",
+  "/visas": "visas",
+  "/flights": "flights",
+  "/hotels": "hotels",
+  "/packages": "packages",
+};
 
 interface CommandItem {
   label: string;
@@ -82,12 +94,16 @@ export function CommandPalette() {
     return () => document.removeEventListener("keydown", down);
   }, []);
 
+  const { isSectionActive } = useActiveSections();
+
   const filteredItems = useMemo(() => {
     return navigationItems.filter((item) => {
-      if (!item.roles) return true;
-      return role && item.roles.includes(role);
+      if (item.roles && (!role || !item.roles.includes(role))) return false;
+      const secKey = urlToSectionKey[item.url];
+      if (secKey && !isSectionActive(secKey) && role !== "admin") return false;
+      return true;
     });
-  }, [role]);
+  }, [role, isSectionActive]);
 
   const handleSelect = (url: string) => {
     setOpen(false);

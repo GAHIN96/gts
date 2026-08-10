@@ -61,7 +61,7 @@ export function usePackage(id: string) {
           )
         `)
         .eq("id", id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       return data as GroupPackage;
@@ -111,10 +111,10 @@ export function useCreatePackage() {
         .from("group_packages")
         .insert(payload)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
@@ -132,10 +132,10 @@ export function useUpdatePackage() {
         .update(updates)
         .eq("id", id)
         .select()
-        .single();
+        ;
 
       if (error) throw error;
-      return data;
+      return Array.isArray(data) ? data[0] : data;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["packages"] });
