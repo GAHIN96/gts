@@ -206,47 +206,49 @@ export default function Auth() {
             </Button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-border/40">
-            <p className="text-xs text-muted-foreground text-center mb-3 font-semibold">Quick Access Demo Login</p>
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs font-semibold rounded-lg h-9 border-primary/30 hover:bg-primary/10"
-                onClick={() => {
-                  setLoginEmail("admin@gts.com");
-                  setLoginPassword("admin123");
-                  signIn("admin@gts.com", "admin123").then(() => navigate("/"));
-                }}
-              >
-                Admin
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs font-semibold rounded-lg h-9 border-amber-500/30 hover:bg-amber-500/10"
-                onClick={() => {
-                  setLoginEmail("agency@gts.com");
-                  setLoginPassword("agency123");
-                  signIn("agency@gts.com", "agency123").then(() => navigate("/"));
-                }}
-              >
-                Agency
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs font-semibold rounded-lg h-9 border-emerald-500/30 hover:bg-emerald-500/10"
-                onClick={() => {
-                  setLoginEmail("finance@gts.com");
-                  setLoginPassword("finance123");
-                  signIn("finance@gts.com", "finance123").then(() => navigate("/"));
-                }}
-              >
-                Finance
-              </Button>
+          {(import.meta.env.VITE_ENABLE_DEMO_LOGIN !== 'false') && (
+            <div className="mt-6 pt-6 border-t border-border/40">
+              <p className="text-xs text-muted-foreground text-center mb-3 font-semibold">Quick Access Demo Login</p>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold rounded-lg h-9 border-primary/30 hover:bg-primary/10"
+                  onClick={() => {
+                    setLoginEmail("admin@gts.com");
+                    setLoginPassword("admin123");
+                    signIn("admin@gts.com", "admin123").then(() => navigate("/"));
+                  }}
+                >
+                  Admin
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold rounded-lg h-9 border-amber-500/30 hover:bg-amber-500/10"
+                  onClick={() => {
+                    setLoginEmail("agency@gts.com");
+                    setLoginPassword("agency123");
+                    signIn("agency@gts.com", "agency123").then(() => navigate("/"));
+                  }}
+                >
+                  Agency
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold rounded-lg h-9 border-emerald-500/30 hover:bg-emerald-500/10"
+                  onClick={() => {
+                    setLoginEmail("finance@gts.com");
+                    setLoginPassword("finance123");
+                    signIn("finance@gts.com", "finance123").then(() => navigate("/"));
+                  }}
+                >
+                  Finance
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
