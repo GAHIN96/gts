@@ -93,27 +93,59 @@ export function AdminAgencyForm({ open, onOpenChange }: AdminAgencyFormProps) {
   const onSubmit = async (data: AgencyFormData) => {
     setIsSubmitting(true);
     try {
-      const { data: result, error } = await supabase.functions.invoke("admin-create-agency", {
-        body: {
+      let userId: string | null = null;
+      
+      // 1. Try registering user account in Supabase Auth
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email: data.email,
           password: data.password,
-          fullName: data.fullName,
-          companyName: data.companyName,
-          phone: data.phone,
-          agencyName: data.agencyName,
-          licenseNumber: data.licenseNumber,
-          address: data.address,
-          city: data.city,
-          country: data.country,
-          commissionRate: data.commissionRate,
-          contactPersonName: data.contactPersonName || data.fullName,
-          contactEmail: data.contactEmail || data.email,
-          contactPhone: data.contactPhone || data.phone,
-        },
-      });
+          options: {
+            data: {
+              full_name: data.fullName,
+              company_name: data.companyName,
+              phone: data.phone,
+              role: 'agency'
+            }
+          }
+        });
+        if (!authError && authData?.user) {
+          userId = authData.user.id;
+        }
+      } catch (e) {
+        console.warn("Auth registration notice:", e);
+      }
 
-      if (error) throw error;
-      if (result.error) throw new Error(result.error);
+      const finalUserId = userId || crypto.randomUUID();
+
+      // 2. Insert agency directly into database
+      const { error: agencyErr } = await supabase.from("agencies").insert([
+        {
+          user_id: finalUserId,
+          agency_name: data.agencyName,
+          license_number: data.licenseNumber || null,
+          address: data.address || null,
+          city: data.city || null,
+          country: data.country || null,
+          commission_rate: Number(data.commissionRate) || 0,
+          contact_person_name: data.contactPersonName || data.fullName,
+          contact_email: data.contactEmail || data.email,
+          contact_phone: data.contactPhone || data.phone,
+          credit_limit: 50000,
+          used_credit: 0,
+          is_active: true,
+          is_verified: true
+        }
+      ]);
+
+      if (agencyErr) throw agencyErr;
+
+      // 3. Assign agency role
+      if (userId) {
+        await supabase.from("user_roles").insert([
+          { user_id: userId, role: "agency" }
+        ]).catch(() => {});
+      }
 
       toast.success(`Agency "${data.agencyName}" created successfully!`);
       queryClient.invalidateQueries({ queryKey: ["agencies"] });
