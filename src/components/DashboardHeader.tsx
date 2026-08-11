@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Moon, Sun, LogOut, User, Settings } from "lucide-react";
+import { Moon, Sun, LogOut, User, Settings, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,9 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { NotificationBell } from "@/components/NotificationBell";
-import {
-  Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator
-} from "@/components/ui/breadcrumb";
+import gtsLogoOfficial from "@/assets/gts-logo-official.png";
 
 // Route label map for breadcrumbs
 const routeLabels: Record<string, string> = {
@@ -105,11 +103,18 @@ const DashboardHeader = () => {
     <header className="sticky top-0 z-40 bg-card/80 backdrop-blur-xl border-b border-border/50">
       <div className="flex items-center justify-between h-14 px-4 md:px-6">
         {/* Left side */}
-        <div className="flex items-center gap-3">
-          <SidebarTrigger className="h-9 w-9 rounded-lg hover:bg-muted" />
+        <div className="flex items-center gap-2 sm:gap-3">
+          <SidebarTrigger className="h-9 w-9 rounded-xl bg-muted/40 hover:bg-muted active:scale-95 transition-all">
+            <Menu className="h-5 w-5 text-foreground" />
+          </SidebarTrigger>
+
+          {/* Mobile & Tablet App Logo */}
+          <div className="flex lg:hidden items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
+            <img src={gtsLogoOfficial} alt="GTS" className="h-7 w-auto object-contain" />
+          </div>
 
           {/* Greeting + Breadcrumbs */}
-          <div className="hidden sm:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3">
             {pathSegments.length === 0 && (
               <span className="text-sm font-medium text-muted-foreground">
                 {getGreeting()}, <span className="text-foreground font-semibold">{getUserName()}</span>
