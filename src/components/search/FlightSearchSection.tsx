@@ -176,7 +176,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
           available_seats: 15,
           class: "economy",
           is_active: true,
-          airline_logo: "https://wumholworulutftwkqjw.supabase.co/storage/v1/object/public/airline-logos/1774688046413-l3kl3n.png",
+          airline_logo: "https://jsiwkbowgmjzywxcywgd.supabase.co/storage/v1/object/public/airline-logos/1774688046413-l3kl3n.png",
           schedule_type: "specific",
           total_seats: 15,
           trip_type: "round_trip",
