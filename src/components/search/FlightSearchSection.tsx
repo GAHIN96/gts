@@ -1792,7 +1792,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
             {value && info?.airportCode && <span className="text-[10px] font-sans font-medium font-bold text-muted-foreground shrink-0">({info.airportCode})</span>}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[250px] p-0" align="start" side="bottom" avoidCollisions={false}>
+        <PopoverContent className="w-[92vw] max-w-sm sm:w-[280px] p-0 shadow-2xl rounded-2xl border-primary/20 bg-card/95 backdrop-blur-xl z-50" align="start" side="bottom" avoidCollisions={false}>
           <Command>
             <CommandInput placeholder="Search city..." />
             <CommandList>
