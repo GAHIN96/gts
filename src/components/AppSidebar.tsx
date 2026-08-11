@@ -412,7 +412,7 @@ export function AppSidebar() {
   return (
     <Sidebar
       collapsible="none"
-      className="hidden lg:flex flex-col h-full w-[260px] border-r-0 sidebar-rail relative shrink-0"
+      className="hidden md:flex flex-col h-full w-[260px] border-r-0 sidebar-rail relative shrink-0"
       style={{ "--sidebar-width": compact ? SIDEBAR_COMPACT_WIDTH : SIDEBAR_DEFAULT_WIDTH } as React.CSSProperties}
     >
       <div className="absolute top-0 left-0 right-0 h-[3px] sidebar-rail-accent-strip z-10" />
