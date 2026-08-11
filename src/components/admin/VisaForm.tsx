@@ -211,7 +211,7 @@ export function VisaForm({ open, onOpenChange, visa }: VisaFormProps) {
       {/* Content */}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
             <div className="border-b px-4">
               <TabsList className="bg-transparent h-12 gap-6 p-0">
                 <TabsTrigger value="home" className={tabClass}>Home</TabsTrigger>
