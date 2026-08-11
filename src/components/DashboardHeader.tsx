@@ -106,22 +106,8 @@ const DashboardHeader = () => {
     <header className="sticky top-0 z-40 bg-card/80 backdrop-blur-xl border-b border-border/50">
       <div className="flex items-center justify-between h-14 px-4 md:px-6">
         {/* Left side */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setMobileMenuOpen(true)}
-            className="md:hidden h-9 w-9 rounded-xl bg-muted/40 hover:bg-muted active:scale-95 transition-all"
-          >
-            <Menu className="h-5 w-5 text-foreground" />
-          </Button>
-
-          <SidebarTrigger className="hidden md:flex h-9 w-9 rounded-xl bg-muted/40 hover:bg-muted active:scale-95 transition-all cursor-pointer" />
-
-          {/* Mobile App Logo */}
-          <div className="flex md:hidden items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
-            <img src={gtsLogoOfficial} alt="GTS" className="h-7 w-auto object-contain" />
-          </div>
+        <div className="flex items-center gap-3">
+          <SidebarTrigger className="h-9 w-9 hover:bg-muted rounded-lg transition-colors" />
 
           {/* Greeting + Breadcrumbs */}
           <div className="hidden sm:flex items-center gap-3">
@@ -213,82 +199,6 @@ const DashboardHeader = () => {
           </DropdownMenu>
         </div>
       </div>
-
-      {/* Mobile Drawer Navigation Sheet */}
-      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="w-[280px] p-0 bg-[#0f172a] border-r border-white/10 text-white z-50 flex flex-col">
-          <SheetHeader className="p-4 border-b border-white/10 flex flex-row items-center justify-between">
-            <SheetTitle className="text-white flex items-center gap-2">
-              <img src={gtsLogoOfficial} alt="GTS" className="h-7 w-auto object-contain brightness-0 invert" />
-            </SheetTitle>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-2 mb-2">Travel Modules</p>
-              {[
-                { label: "Dashboard", icon: LayoutDashboard, path: "/" },
-                { label: "Flights", icon: Plane, path: "/flights" },
-                { label: "Group Packages", icon: Package, path: "/packages" },
-                { label: "Hotels", icon: BedDouble, path: "/hotels" },
-                { label: "Visas", icon: FileCheck, path: "/visas" },
-                { label: "Transfers", icon: Car, path: "/transfers" },
-                { label: "Tours", icon: Map, path: "/tours" },
-                { label: "Bookings", icon: History, path: role === "agency" ? "/booking-history" : "/bookings" },
-              ].map(item => (
-                <button
-                  key={item.path}
-                  onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left",
-                    location.pathname === item.path ? "bg-primary text-white font-semibold" : "text-white/70 hover:text-white hover:bg-white/10"
-                  )}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            {(role === "admin" || role === "finance") && (
-              <div className="space-y-1 pt-3 border-t border-white/10">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-2 mb-2">Administration</p>
-                {[
-                  { label: "Agencies", icon: Building2, path: "/agencies" },
-                  { label: "Finance Center", icon: Landmark, path: "/finance-dashboard" },
-                  { label: "Settings", icon: Settings, path: "/settings" },
-                ].map(item => (
-                  <button
-                    key={item.path}
-                    onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left",
-                      location.pathname === item.path ? "bg-primary text-white font-semibold" : "text-white/70 hover:text-white hover:bg-white/10"
-                    )}
-                  >
-                    <item.icon className="h-4 w-4 shrink-0" />
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="p-4 border-t border-white/10 bg-black/20">
-            <div className="flex items-center gap-3 mb-3">
-              <Avatar className="h-9 w-9 ring-2 ring-primary/40">
-                <AvatarFallback className="bg-primary text-white font-bold text-xs">{getInitials()}</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-semibold truncate text-white">{getUserName()}</span>
-                <span className="text-[10px] text-white/50 truncate">{user?.email}</span>
-              </div>
-            </div>
-            <Button variant="destructive" size="sm" onClick={() => { signOut(); setMobileMenuOpen(false); }} className="w-full gap-2 text-xs rounded-xl h-9">
-              <LogOut className="h-3.5 w-3.5" />
-              Sign Out
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
     </header>
   );
 };
