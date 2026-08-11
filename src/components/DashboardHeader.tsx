@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { NotificationBell } from "@/components/NotificationBell";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import gtsLogoOfficial from "@/assets/gts-logo-official.png";
+import { cn } from "@/lib/utils";
 
 // Route label map for breadcrumbs
 const routeLabels: Record<string, string> = {
