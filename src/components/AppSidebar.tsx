@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useActiveSections, type ActiveSections } from "@/hooks/useActiveSections";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Sidebar, SidebarContent, SidebarHeader, SidebarFooter,
 } from "@/components/ui/sidebar";
@@ -402,6 +403,9 @@ export function AppSidebar() {
     { label: "Admin", items: administrationModules.filter((i) => canAccess(i.roles, i.url)) },
     { label: "System", items: settingsItems.filter((i) => canAccess(i.roles, i.url)) },
   ].filter((g) => g.items.length > 0);
+
+  const isMobile = useIsMobile();
+  if (isMobile) return null;
 
   let shortcutCounter = 0;
 
