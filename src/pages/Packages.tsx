@@ -385,9 +385,32 @@ const Packages = () => {
   }
 
   return (
-    <div className="space-y-10">
-
-      {/* Top action bar removed per request */}
+    <div className="space-y-8">
+      {/* Skyscanner & Booking.com style travel module tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar p-1.5 bg-muted/40 rounded-xl border border-border/40">
+        {[
+          { label: "Flights", icon: Plane, path: "/flights", active: false },
+          { label: "Hotels", icon: Building, path: "/hotels", active: false },
+          { label: "Packages", icon: Package2, path: "/packages", active: true },
+          { label: "Visas", icon: FileText, path: "/visas", active: false },
+          { label: "Transfers", icon: Car, path: "/transfers", active: false },
+          { label: "Tours", icon: Map, path: "/tours", active: false },
+        ].map(tab => (
+          <button
+            key={tab.label}
+            onClick={() => navigate(tab.path)}
+            className={cn(
+              "flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer",
+              tab.active
+                ? "bg-primary text-white shadow-md shadow-primary/30 scale-[1.02]"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+            )}
+          >
+            <tab.icon className="h-3.5 w-3.5" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {/* Package Form Dialog */}
       <GroupPackageForm
