@@ -614,7 +614,7 @@ export function GroupPackageForm({ open, onOpenChange, pkg, fullPage, onClose }:
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
         <div className="flex-1">
           <div className={fullPage ? "mb-6" : "px-6"}>
-            <div className="grid w-full grid-cols-5 rounded-lg bg-primary/5 border border-primary/15 p-1 text-muted-foreground">
+            <div className="flex overflow-x-auto min-w-0 sm:grid w-full sm:grid-cols-5 rounded-lg bg-primary/5 border border-primary/15 p-1 text-muted-foreground gap-1">
               {[
                 { value: "general", label: "General", disabled: false },
                 { value: "departures", label: "Departures", disabled: !isEditing },
