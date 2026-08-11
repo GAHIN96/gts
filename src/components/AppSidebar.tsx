@@ -407,7 +407,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar
-      collapsible="offcanvas"
+      collapsible="none"
       className="hidden lg:flex border-r-0 sidebar-rail relative shrink-0"
       style={{ "--sidebar-width": compact ? SIDEBAR_COMPACT_WIDTH : SIDEBAR_DEFAULT_WIDTH } as React.CSSProperties}
     >
