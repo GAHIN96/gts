@@ -27,6 +27,7 @@ import {
   Sparkles,
   TrendingDown,
   Eye,
+  Plane,
   BedDouble,
   Package,
   FileCheck,
