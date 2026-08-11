@@ -116,7 +116,19 @@ export function AdminAgencyForm({ open, onOpenChange }: AdminAgencyFormProps) {
         console.warn("Auth registration notice:", e);
       }
 
-      const finalUserId = userId || crypto.randomUUID();
+      // Fallback 1: Check existing profile / user
+      if (!userId) {
+        const { data: existingProf } = await supabase.from('profiles').select('id').eq('email', data.email).maybeSingle();
+        if (existingProf?.id) userId = existingProf.id;
+      }
+
+      // Fallback 2: Current authenticated user ID
+      if (!userId) {
+        const { data: currentUser } = await supabase.auth.getUser();
+        userId = currentUser.user?.id || "2e21a355-50c4-426a-a90b-afec0a4cbe49";
+      }
+
+      const finalUserId = userId;
 
       // 2. Insert agency directly into database
       const { error: agencyErr } = await supabase.from("agencies").insert([
