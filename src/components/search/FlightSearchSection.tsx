@@ -2285,16 +2285,16 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
         </div>
 
         {/* Hero Content */}
-        <div className="relative z-10 flex flex-col items-center text-center px-4 pt-6 pb-8 sm:pt-10 sm:pb-10">
+        <div className="relative z-10 flex flex-col items-center text-center px-3 sm:px-4 pt-4 pb-4 sm:pt-10 sm:pb-10">
           <p
-            className="text-[11px] sm:text-xs font-semibold text-white/80 uppercase tracking-[0.3em] mb-3 inline-flex items-center gap-1.5 animate-fade-in"
+            className="text-[10px] sm:text-xs font-semibold text-white/80 uppercase tracking-[0.25em] mb-2 sm:mb-3 inline-flex items-center gap-1.5 animate-fade-in"
             style={{ animationDelay: "60ms", animationFillMode: "both" }}
           >
             <Sparkles className="h-3 w-3 text-cyan-300" />
             The Digital Concierge
           </p>
           <h1
-            className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-6 drop-shadow-lg font-heading leading-tight animate-fade-in"
+            className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight mb-3 sm:mb-6 drop-shadow-lg font-heading leading-tight animate-fade-in"
             style={{ animationDelay: "180ms", animationFillMode: "both" }}
           >
             Find Your Next{" "}
