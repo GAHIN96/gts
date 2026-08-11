@@ -77,6 +77,15 @@ export function useVoucherSettings() {
     fetchSettings();
   }, [fetchSettings]);
 
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const uploadLogo = async (file: File): Promise<string | null> => {
     try {
       const fileExt = file.name.split(".").pop();
@@ -85,17 +94,22 @@ export function useVoucherSettings() {
 
       const { error: uploadError } = await supabase.storage
         .from("settings-images")
-        .upload(filePath, file);
+        .upload(filePath, file, { upsert: true });
 
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from("settings-images")
-        .getPublicUrl(filePath);
-
-      return urlData.publicUrl;
+      if (!uploadError) {
+        const { data: urlData } = supabase.storage
+          .from("settings-images")
+          .getPublicUrl(filePath);
+        if (urlData?.publicUrl) return urlData.publicUrl;
+      }
     } catch (error) {
-      console.error("Error uploading logo:", error);
+      console.warn("Storage upload notice, using Data URL fallback:", error);
+    }
+
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      return dataUrl;
+    } catch {
       toast.error("Failed to upload logo");
       return null;
     }
