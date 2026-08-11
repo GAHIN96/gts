@@ -97,7 +97,7 @@ export default function Auth() {
       </div>
 
       {/* Left text overlay - Enhanced Premium UI */}
-      <div className="absolute left-10 lg:left-16 top-[28%] z-10 max-w-2xl">
+      <div className="hidden lg:block absolute left-10 lg:left-16 top-[28%] z-10 max-w-2xl">
         <h1 className="text-6xl sm:text-7xl xl:text-8xl font-bold font-heading text-white tracking-tighter leading-[1.05] animate-fade-up" style={{ textShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
           Explore the <br />
           <span className="relative inline-block mt-2">
@@ -121,12 +121,12 @@ export default function Auth() {
           </div>
         </div>
       </div>
-      <div className="absolute left-10 bottom-6 z-10">
+      <div className="hidden sm:block absolute left-6 bottom-4 z-10">
         <p className="text-xs text-white/40">© {new Date().getFullYear()} GTS Booking · All rights reserved</p>
       </div>
 
       {/* Compact floating login card */}
-      <div className="relative z-10 w-full max-w-[440px] mr-8 lg:mr-16 my-8">
+      <div className="relative z-10 w-full max-w-[440px] mx-4 sm:mx-auto lg:mr-16 my-8">
         <div className="bg-white/90 dark:bg-[hsl(231,30%,12%)]/90 backdrop-blur-xl rounded-2xl shadow-2xl p-8 lg:p-10">
 
           <div className="space-y-1.5 mb-6">
