@@ -824,14 +824,22 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
                       }
                     }}
                   >
-                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      {airports.map(a => (
-                        <SelectItem key={`airport-${a.id}`} value={a.code}>
-                          {a.cities?.name || a.name} - {a.name} ({a.code})
-                        </SelectItem>
-                      ))}
-                      {form.watch("departure_city") && !form.watch("departure_airport_code") && !airports.some(a => a.code === form.watch("departure_city")) && (
+                    <SelectTrigger><SelectValue placeholder="Select departure location" /></SelectTrigger>
+                    <SelectContent className="max-h-60 overflow-y-auto">
+                      {airports.length > 0 ? (
+                        airports.map(a => (
+                          <SelectItem key={`airport-from-${a.id}`} value={a.code}>
+                            {a.cities?.name || a.name} - {a.name} ({a.code})
+                          </SelectItem>
+                        ))
+                      ) : (
+                        cities.map(c => (
+                          <SelectItem key={`city-from-${c.id}`} value={c.name}>
+                            {c.name} ({c.country})
+                          </SelectItem>
+                        ))
+                      )}
+                      {form.watch("departure_city") && !airports.some(a => a.code === form.watch("departure_airport_code") || a.code === form.watch("departure_city")) && (
                         <SelectItem value={form.watch("departure_city")}>{form.watch("departure_city")}</SelectItem>
                       )}
                     </SelectContent>
@@ -852,14 +860,22 @@ export function FlightForm({ open, onOpenChange, flight, inline = false }: Fligh
                       }
                     }}
                   >
-                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      {airports.map(a => (
-                        <SelectItem key={`airport-${a.id}`} value={a.code}>
-                          {a.cities?.name || a.name} - {a.name} ({a.code})
-                        </SelectItem>
-                      ))}
-                      {form.watch("arrival_city") && !form.watch("arrival_airport_code") && !airports.some(a => a.code === form.watch("arrival_city")) && (
+                    <SelectTrigger><SelectValue placeholder="Select arrival location" /></SelectTrigger>
+                    <SelectContent className="max-h-60 overflow-y-auto">
+                      {airports.length > 0 ? (
+                        airports.map(a => (
+                          <SelectItem key={`airport-to-${a.id}`} value={a.code}>
+                            {a.cities?.name || a.name} - {a.name} ({a.code})
+                          </SelectItem>
+                        ))
+                      ) : (
+                        cities.map(c => (
+                          <SelectItem key={`city-to-${c.id}`} value={c.name}>
+                            {c.name} ({c.country})
+                          </SelectItem>
+                        ))
+                      )}
+                      {form.watch("arrival_city") && !airports.some(a => a.code === form.watch("arrival_airport_code") || a.code === form.watch("arrival_city")) && (
                         <SelectItem value={form.watch("arrival_city")}>{form.watch("arrival_city")}</SelectItem>
                       )}
                     </SelectContent>
