@@ -348,7 +348,7 @@ const Agencies = () => {
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto min-w-0">
           <Table>
             <TableHeader>
               <TableRow>

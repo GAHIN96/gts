@@ -29,7 +29,7 @@ const MobileBottomNav = () => {
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-card/95 backdrop-blur-2xl border-t border-border/40 shadow-[0_-8px_25px_rgba(0,0,0,0.12)] print:hidden pb-[env(safe-area-inset-bottom)]">
+    <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-card/95 backdrop-blur-2xl border-t border-border/40 shadow-[0_-8px_25px_rgba(0,0,0,0.12)] print:hidden pb-[env(safe-area-inset-bottom)]">
       <nav className="flex items-center justify-around h-16 px-1.5">
         {items.map((item) => {
           const isActive = location.pathname === item.path || (item.path !== "/" && location.pathname.startsWith(item.path));
@@ -69,7 +69,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         <AppSidebar />
         <SidebarInset className="flex-1 flex flex-col overflow-hidden">
           <DashboardHeader />
-          <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-y-auto relative">
+          <main className="flex-1 p-3 sm:p-4 lg:p-6 pb-20 lg:pb-6 overflow-y-auto relative">
             {children}
           </main>
         </SidebarInset>
