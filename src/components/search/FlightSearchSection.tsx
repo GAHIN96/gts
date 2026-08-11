@@ -2320,7 +2320,7 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
                 {[
                   { label: "Flights", icon: Plane, path: "/flights", active: true },
                   { label: "Hotels", icon: BedDouble, path: "/hotels", active: false },
-                  { label: "Packages", icon: GroupPackageIcon, path: "/packages", active: false },
+                  { label: "Packages", icon: Package, path: "/packages", active: false },
                   { label: "Visas", icon: FileCheck, path: "/visas", active: false },
                   { label: "Transfers", icon: Car, path: "/transfers", active: false },
                   { label: "Tours", icon: Map, path: "/tours", active: false },
