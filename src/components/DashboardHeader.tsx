@@ -110,20 +110,20 @@ const DashboardHeader = () => {
             variant="ghost"
             size="icon"
             onClick={() => setMobileMenuOpen(true)}
-            className="lg:hidden h-9 w-9 rounded-xl bg-muted/40 hover:bg-muted active:scale-95 transition-all"
+            className="md:hidden h-9 w-9 rounded-xl bg-muted/40 hover:bg-muted active:scale-95 transition-all"
           >
             <Menu className="h-5 w-5 text-foreground" />
           </Button>
 
-          <SidebarTrigger className="hidden lg:flex h-9 w-9 rounded-xl bg-muted/40 hover:bg-muted active:scale-95 transition-all" />
+          <SidebarTrigger className="hidden md:flex h-9 w-9 rounded-xl bg-muted/40 hover:bg-muted active:scale-95 transition-all cursor-pointer" />
 
-          {/* Mobile & Tablet App Logo */}
-          <div className="flex lg:hidden items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
+          {/* Mobile App Logo */}
+          <div className="flex md:hidden items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
             <img src={gtsLogoOfficial} alt="GTS" className="h-7 w-auto object-contain" />
           </div>
 
           {/* Greeting + Breadcrumbs */}
-          <div className="hidden lg:flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-3">
             {pathSegments.length === 0 && (
               <span className="text-sm font-medium text-muted-foreground">
                 {getGreeting()}, <span className="text-foreground font-semibold">{getUserName()}</span>
