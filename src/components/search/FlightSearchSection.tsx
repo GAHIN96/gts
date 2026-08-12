@@ -2317,35 +2317,8 @@ export function FlightSearchSection({ onFlightSelect }: FlightSearchSectionProps
             className="overflow-hidden backdrop-blur-xl bg-card/95 ring-1 ring-white/10 border-border/30 shadow-[0_30px_80px_-30px_hsl(var(--primary)/0.45),inset_0_1px_0_0_hsl(0_0%_100%/0.08)] mx-4 sm:mx-8 mb-6 rounded-2xl animate-fade-in w-full max-w-6xl"
             style={{ animationDelay: "380ms", animationFillMode: "both" }}
           >
-            {/* Header with Skyscanner & Booking.com style travel module tabs */}
-            <div className="relative px-4 py-3 border-b border-border/30 bg-gradient-to-r from-primary/[0.08] via-blue-500/[0.05] to-transparent space-y-3">
-              {/* Module Tab Selector Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar p-1 bg-muted/50 rounded-xl">
-                {[
-                  { label: "Flights", icon: Plane, path: "/flights", active: true },
-                  { label: "Hotels", icon: BedDouble, path: "/hotels", active: false },
-                  { label: "Packages", icon: Package, path: "/packages", active: false },
-                  { label: "Visas", icon: FileCheck, path: "/visas", active: false },
-                  { label: "Transfers", icon: Car, path: "/transfers", active: false },
-                  { label: "Tours", icon: Map, path: "/tours", active: false },
-                ].map(tab => (
-                  <button
-                    key={tab.label}
-                    onClick={() => navigate(tab.path)}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer",
-                      tab.active
-                        ? "bg-primary text-white shadow-md shadow-primary/30 scale-[1.02]"
-                        : "text-muted-foreground hover:text-foreground hover:bg-background/60"
-                    )}
-                  >
-                    <tab.icon className="h-3.5 w-3.5" />
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between flex-wrap gap-3">
+            {/* Header */}
+            <div className="relative px-4 py-3 border-b border-border/30 bg-gradient-to-r from-primary/[0.08] via-blue-500/[0.05] to-transparent space-y-3">              <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2.5">
                   <motion.div
                     initial={{ scale: 0.8, opacity: 0 }}
